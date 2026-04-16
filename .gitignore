@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Local uploaded images (Cloudinary 미사용 시)
+server/uploads/
+
 # Build outputs
 dist/
 dist-ssr/

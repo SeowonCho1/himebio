@@ -6,9 +6,9 @@ import { Banner } from "./models/Banner.js";
 import { Popup } from "./models/Popup.js";
 import { Partner, PartnerType } from "./models/Partner.js";
 import { Product } from "./models/Product.js";
-import { Notice } from "./models/Notice.js";
-import { Event } from "./models/Event.js";
-import { Reference } from "./models/Reference.js";
+import { ProductCategory } from "./models/ProductCategory.js";
+import { Board, BoardDisplayType } from "./models/Board.js";
+import { BoardPost } from "./models/BoardPost.js";
 
 dotenv.config();
 
@@ -20,9 +20,9 @@ async function run() {
     Popup.deleteMany({}),
     Partner.deleteMany({}),
     Product.deleteMany({}),
-    Notice.deleteMany({}),
-    Event.deleteMany({}),
-    Reference.deleteMany({}),
+    ProductCategory.deleteMany({}),
+    BoardPost.deleteMany({}),
+    Board.deleteMany({}),
   ]);
 
   const adminEmail = "admin@example.com";
@@ -80,10 +80,44 @@ async function run() {
     },
   ]);
 
+  const [catL1, catL2] = await ProductCategory.insertMany([
+    { name: "분석·연구시약", parentId: null, level: 1, sortOrder: 1, isActive: true },
+    { name: "단백질·항체", parentId: null, level: 1, sortOrder: 2, isActive: true },
+  ]);
+  const catL2b = await ProductCategory.create({
+    name: "Recombinant 단백질",
+    parentId: catL2._id,
+    level: 2,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const catL3b = await ProductCategory.create({
+    name: "정제 등급",
+    parentId: catL2b._id,
+    level: 3,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const catL4b = await ProductCategory.create({
+    name: "연구용 고순도",
+    parentId: catL3b._id,
+    level: 4,
+    sortOrder: 1,
+    isActive: true,
+  });
+  const catSynthChild = await ProductCategory.create({
+    name: "맞춤 합성",
+    parentId: catL1._id,
+    level: 2,
+    sortOrder: 1,
+    isActive: true,
+  });
+
   await Product.insertMany([
     {
       name: "Recombinant Protein A",
       category: PartnerType.MANUFACTURER,
+      categoryId: catL3b._id,
       partnerId: manufacturer._id,
       thumbnailUrl: "https://placehold.co/400x300?text=Protein+A",
       images: ["https://placehold.co/800x500?text=Protein+A+Detail"],
@@ -97,6 +131,7 @@ async function run() {
     {
       name: "Custom Peptide Synthesis",
       category: PartnerType.SYNTHESIS,
+      categoryId: catSynthChild._id,
       partnerId: synthesis._id,
       thumbnailUrl: "https://placehold.co/400x300?text=Peptide+Service",
       images: ["https://placehold.co/800x500?text=Peptide+Service+Detail"],
@@ -110,6 +145,7 @@ async function run() {
     {
       name: "Monoclonal Antibody Kit M-200",
       category: PartnerType.MANUFACTURER,
+      categoryId: catL2b._id,
       partnerId: manufacturer._id,
       thumbnailUrl: "https://placehold.co/400x300?text=Antibody+Kit",
       images: ["https://placehold.co/800x500?text=Antibody+Kit+Detail"],
@@ -123,6 +159,7 @@ async function run() {
     {
       name: "qPCR Master Mix H-1",
       category: PartnerType.MANUFACTURER,
+      categoryId: catL1._id,
       partnerId: manufacturer2._id,
       thumbnailUrl: "https://placehold.co/400x300?text=qPCR+Master+Mix",
       images: ["https://placehold.co/800x500?text=qPCR+Master+Mix+Detail"],
@@ -136,6 +173,7 @@ async function run() {
     {
       name: "RNA Extraction Set N-5",
       category: PartnerType.MANUFACTURER,
+      categoryId: catL1._id,
       partnerId: manufacturer2._id,
       thumbnailUrl: "https://placehold.co/400x300?text=RNA+Extraction",
       images: ["https://placehold.co/800x500?text=RNA+Extraction+Detail"],
@@ -149,6 +187,7 @@ async function run() {
     {
       name: "Cell Culture Medium NC-Plus",
       category: PartnerType.MANUFACTURER,
+      categoryId: catL2._id,
       partnerId: manufacturer3._id,
       thumbnailUrl: "https://placehold.co/400x300?text=Culture+Medium",
       images: ["https://placehold.co/800x500?text=Culture+Medium+Detail"],
@@ -162,6 +201,7 @@ async function run() {
     {
       name: "Immunofluorescence Stain Set",
       category: PartnerType.MANUFACTURER,
+      categoryId: catL4b._id,
       partnerId: manufacturer3._id,
       thumbnailUrl: "https://placehold.co/400x300?text=IF+Stain+Set",
       images: ["https://placehold.co/800x500?text=IF+Stain+Set+Detail"],
@@ -175,6 +215,7 @@ async function run() {
     {
       name: "Custom Oligo DNA 25mer",
       category: PartnerType.SYNTHESIS,
+      categoryId: catSynthChild._id,
       partnerId: synthesis2._id,
       thumbnailUrl: "https://placehold.co/400x300?text=Oligo+DNA",
       images: ["https://placehold.co/800x500?text=Oligo+DNA+Detail"],
@@ -188,6 +229,7 @@ async function run() {
     {
       name: "siRNA Design & Synthesis",
       category: PartnerType.SYNTHESIS,
+      categoryId: catSynthChild._id,
       partnerId: synthesis2._id,
       thumbnailUrl: "https://placehold.co/400x300?text=siRNA+Service",
       images: ["https://placehold.co/800x500?text=siRNA+Service+Detail"],
@@ -226,8 +268,42 @@ async function run() {
     isActive: true,
   });
 
-  await Notice.insertMany([
+  const [noticesBoard, eventsBoard, refsBoard] = await Board.insertMany([
     {
+      slug: "notices",
+      title: "공지사항",
+      subtitle: "주요 공지를 안내드립니다.",
+      displayType: BoardDisplayType.TABLE,
+      showSearch: true,
+      sortOrder: 1,
+      isActive: true,
+    },
+    {
+      slug: "events",
+      title: "이벤트",
+      subtitle: "진행 중인 할인·프로모션 소식입니다.",
+      displayType: BoardDisplayType.THUMBNAIL_LIST,
+      showSearch: true,
+      sortOrder: 2,
+      isActive: true,
+    },
+    {
+      slug: "references",
+      title: "참고논문",
+      subtitle: "실험 및 제품 관련 참고자료입니다.",
+      displayType: BoardDisplayType.GALLERY,
+      showSearch: true,
+      sortOrder: 3,
+      isActive: true,
+    },
+  ]);
+
+  const evStart = new Date();
+  const evEnd = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+
+  await BoardPost.insertMany([
+    {
+      boardId: noticesBoard._id,
       title: "배송 지연 안내",
       summary: "일부 제품 입고 지연 공지",
       content: "해외 운송 사정으로 일부 제품 출고가 지연될 수 있습니다.",
@@ -235,6 +311,7 @@ async function run() {
       isActive: true,
     },
     {
+      boardId: noticesBoard._id,
       title: "GW 연구지원 프로그램 안내",
       summary: "연구기관 대상 문의 우선 대응",
       content: "연구기관 고객 대상 우선 대응 프로그램을 운영합니다.",
@@ -242,6 +319,7 @@ async function run() {
       isActive: true,
     },
     {
+      boardId: noticesBoard._id,
       title: "5월 연휴 배송 일정 공지",
       summary: "연휴 기간 택배 마감/재개 일정 안내",
       content: "연휴 전 출고 마감일과 연휴 후 순차 출고 일정을 안내드립니다.",
@@ -249,6 +327,7 @@ async function run() {
       isActive: true,
     },
     {
+      boardId: noticesBoard._id,
       title: "합성 서비스 접수 프로세스 변경",
       summary: "견적 접수 폼 업데이트 안내",
       content: "합성 서비스 접수 시 필요한 필수 항목이 일부 변경되었습니다.",
@@ -256,23 +335,25 @@ async function run() {
       isActive: true,
     },
     {
+      boardId: noticesBoard._id,
       title: "고객센터 운영시간 변경 안내",
       summary: "평일 운영시간 변경 공지",
       content: "고객센터 운영시간이 09:00~18:00으로 변경됩니다.",
       isImportant: false,
       isActive: true,
     },
-  ]);
-
-  await Event.insertMany([
     {
+      boardId: eventsBoard._id,
       title: "2026 상반기 프로모션",
       summary: "추천 제품 할인 이벤트",
       content: "견적문의 접수 시 맞춤 할인 혜택을 제공합니다.",
       thumbnailUrl: "https://placehold.co/500x300?text=Event+1",
+      startAt: evStart,
+      endAt: evEnd,
       isActive: true,
     },
     {
+      boardId: eventsBoard._id,
       title: "신규 고객 웰컴 쿠폰 이벤트",
       summary: "첫 견적문의 고객 대상 혜택",
       content: "신규 고객 첫 문의 시 적용 가능한 웰컴 혜택을 제공합니다.",
@@ -280,6 +361,7 @@ async function run() {
       isActive: true,
     },
     {
+      boardId: eventsBoard._id,
       title: "합성 서비스 빠른 납기 캠페인",
       summary: "긴급 프로젝트 지원",
       content: "빠른 납기 옵션으로 연구 일정에 맞춘 합성 서비스를 제공합니다.",
@@ -287,42 +369,43 @@ async function run() {
       isActive: true,
     },
     {
+      boardId: eventsBoard._id,
       title: "대학 연구실 패키지 프로모션",
       summary: "세트 구매 할인 제공",
       content: "연구실 단위 구매 시 전용 패키지 가격을 제공합니다.",
       thumbnailUrl: "https://placehold.co/500x300?text=Event+4",
       isActive: true,
     },
-  ]);
-
-  await Reference.insertMany([
     {
+      boardId: refsBoard._id,
       title: "단백질 발현 실험 참고자료",
-      summary: "실험 세팅 가이드와 영상 자료",
+      summary: "실험 세팅 가이드와 영상 자료\n- 발현 벡터 선택\n- 배양 조건",
       content: "실험 디자인 시 고려해야 할 파라미터를 정리했습니다.",
       thumbnailUrl: "https://placehold.co/500x300?text=Reference+1",
       youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       isActive: true,
     },
     {
+      boardId: refsBoard._id,
       title: "qPCR 실험 최적화 가이드",
-      summary: "프라이머 설계 및 조건 최적화",
+      summary: "프라이머 설계 및 조건 최적화\n- 시약 농도\n- 사이클 조건",
       content: "qPCR 실험 재현성을 높이는 핵심 체크리스트를 제공합니다.",
       thumbnailUrl: "https://placehold.co/500x300?text=Reference+2",
       youtubeUrl: "https://www.youtube.com/watch?v=ysz5S6PUM-U",
       isActive: true,
     },
     {
+      boardId: refsBoard._id,
       title: "세포배양 오염 방지 체크포인트",
-      summary: "실무 중심 배양 관리 팁",
+      summary: "실무 중심 배양 관리 팁\n- 무균 조작\n- 정기 점검",
       content: "오염 빈도를 줄이기 위한 장비/공정 관리 방법을 안내합니다.",
       thumbnailUrl: "https://placehold.co/500x300?text=Reference+3",
-      youtubeUrl: "",
       isActive: true,
     },
     {
+      boardId: refsBoard._id,
       title: "siRNA 실험 설계 참고노트",
-      summary: "타깃 선정과 컨트롤 구성",
+      summary: "타깃 선정과 컨트롤 구성\n- off-target 검토",
       content: "siRNA 실험 설계 시 필요한 컨트롤 및 분석 포인트를 설명합니다.",
       thumbnailUrl: "https://placehold.co/500x300?text=Reference+4",
       youtubeUrl: "https://www.youtube.com/watch?v=jNQXAC9IVRw",

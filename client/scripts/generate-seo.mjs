@@ -1,7 +1,19 @@
 ﻿import { writeFile } from "node:fs/promises";
 
 const siteUrl = (process.env.VITE_SITE_URL || "https://example.com").replace(/\/$/, "");
-const routes = ["/", "/partners", "/synthesis", "/events", "/references", "/notices", "/inquiry"];
+const routes = [
+  "/",
+  "/partners",
+  "/synthesis",
+  "/products",
+  "/events",
+  "/references",
+  "/notices",
+  "/inquiry",
+  "/customer/order-guide",
+  "/customer/about",
+  "/customer/directions",
+];
 
 const robots = [
   "User-agent: *",

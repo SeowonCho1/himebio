@@ -4,10 +4,10 @@ import { Banner } from "../models/Banner.js";
 import { Popup } from "../models/Popup.js";
 import { Partner, PartnerType } from "../models/Partner.js";
 import { Product } from "../models/Product.js";
-import { Notice } from "../models/Notice.js";
-import { Event } from "../models/Event.js";
-import { Reference } from "../models/Reference.js";
-import { Inquiry } from "../models/Inquiry.js";
+import { ProductCategory } from "../models/ProductCategory.js";
+import { Board } from "../models/Board.js";
+import { BoardPost } from "../models/BoardPost.js";
+import { Inquiry, HowHeard } from "../models/Inquiry.js";
 import { SiteSetting, SITE_SETTING_KEY } from "../models/SiteSetting.js";
 import { sendInquiryNotification } from "../utils/email.js";
 
@@ -48,23 +48,69 @@ router.get("/partners", async (req, res) => {
   const { type, search } = req.query;
   const filter = { isActive: true };
   if (type === PartnerType.MANUFACTURER || type === PartnerType.SYNTHESIS) filter.type = type;
-  if (search && String(search).trim()) filter.name = new RegExp(String(search).trim(), "i");
+  if (search && String(search).trim()) {
+    const rx = new RegExp(String(search).trim(), "i");
+    filter.$or = [{ name: rx }, { productNumber: rx }, { shortDescription: rx }];
+  }
   const items = await Partner.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
   res.json(items);
 });
 
+async function productCategoryPathNames(leafId) {
+  if (!leafId) return [];
+  const names = [];
+  let cur = leafId;
+  const guard = new Set();
+  while (cur && !guard.has(String(cur))) {
+    guard.add(String(cur));
+    const c = await ProductCategory.findById(cur).select("name parentId").lean();
+    if (!c) break;
+    names.unshift(c.name);
+    cur = c.parentId;
+  }
+  return names;
+}
+
+function buildPublicCategoryTree(all) {
+  const byParent = new Map();
+  for (const c of all) {
+    const k = c.parentId ? String(c.parentId) : "__root__";
+    if (!byParent.has(k)) byParent.set(k, []);
+    byParent.get(k).push(c);
+  }
+  function build(pid) {
+    const k = pid ? String(pid) : "__root__";
+    return (byParent.get(k) || []).map((c) => ({ ...c, children: build(c._id) }));
+  }
+  return build(null);
+}
+
+router.get("/product-categories", async (_req, res) => {
+  const all = await ProductCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean();
+  res.json({ tree: buildPublicCategoryTree(all) });
+});
+
 router.get("/products", async (req, res) => {
-  const { partnerId, category, search, isRecommended, isNew } = req.query;
+  const { partnerId, category, categoryId, category2Id, search, isRecommended, isNew } = req.query;
   const { page, limit, skip } = parsePagination(req, 12);
   const filter = { isActive: true };
   if (partnerId && mongoose.isValidObjectId(partnerId)) filter.partnerId = partnerId;
   if (category === PartnerType.MANUFACTURER || category === PartnerType.SYNTHESIS) filter.category = category;
+  if (categoryId && mongoose.isValidObjectId(categoryId)) filter.categoryId = categoryId;
+  if (category2Id && mongoose.isValidObjectId(category2Id)) filter.category2Id = category2Id;
   if (isRecommended === "true") filter.isRecommended = true;
   if (isNew === "true") filter.isNew = true;
   if (search && String(search).trim()) filter.name = new RegExp(String(search).trim(), "i");
 
   const [items, total] = await Promise.all([
-    Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate("partnerId", "name type logoUrl").lean(),
+    Product.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("partnerId", "name type logoUrl")
+      .populate("categoryId", "name level")
+      .populate("category2Id", "name level")
+      .lean(),
     Product.countDocuments(filter),
   ]);
   res.json({ items, total, page, limit, hasMore: skip + items.length < total });
@@ -72,106 +118,139 @@ router.get("/products", async (req, res) => {
 
 router.get("/products/:id", async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Not found" });
-  const doc = await Product.findOne({ _id: req.params.id, isActive: true }).populate("partnerId", "name type logoUrl description websiteUrl").lean();
+  const doc = await Product.findOne({ _id: req.params.id, isActive: true })
+    .populate("partnerId", "name type logoUrl description websiteUrl")
+    .populate("categoryId", "name level parentId")
+    .populate("category2Id", "name level parentId")
+    .lean();
   if (!doc) return res.status(404).json({ error: "Not found" });
-  res.json(doc);
+  const categoryPath = await productCategoryPathNames(doc.categoryId?._id || doc.categoryId);
+  const category2Path = await productCategoryPathNames(doc.category2Id?._id || doc.category2Id);
+  res.json({ ...doc, categoryPath, category2Path });
 });
 
-router.get("/notices", async (req, res) => {
+async function listBoardPostsBySlug(req, res, slug) {
+  const slugNorm = String(slug || "").toLowerCase();
+  const board = await Board.findOne({ slug: slugNorm, isActive: true }).lean();
+  if (!board) return res.status(404).json({ error: "Not found" });
   const { search } = req.query;
   const { page, limit, skip } = parsePagination(req, 10);
-  const filter = { isActive: true };
-  if (search && String(search).trim()) filter.title = new RegExp(String(search).trim(), "i");
+  const filter = { boardId: board._id, isActive: true };
+  if (search && String(search).trim()) {
+    const rx = new RegExp(String(search).trim(), "i");
+    filter.$or = [{ title: rx }, { summary: rx }];
+  }
   const [items, total] = await Promise.all([
-    Notice.find(filter)
+    BoardPost.find(filter)
       .sort({ isImportant: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .select("-content")
       .lean(),
-    Notice.countDocuments(filter),
+    BoardPost.countDocuments(filter),
   ]);
-  res.json({ items, total, page, limit, hasMore: skip + items.length < total });
-});
+  res.json({
+    items,
+    total,
+    page,
+    limit,
+    hasMore: skip + items.length < total,
+    board: {
+      slug: board.slug,
+      title: board.title,
+      subtitle: board.subtitle,
+      displayType: board.displayType,
+      showSearch: board.showSearch,
+    },
+  });
+}
 
-router.get("/notices/:id", async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Not found" });
-  const doc = await Notice.findOne({ _id: req.params.id, isActive: true }).lean();
+async function getBoardPostBySlug(req, res, slug, idParam) {
+  const slugNorm = String(slug || "").toLowerCase();
+  const board = await Board.findOne({ slug: slugNorm, isActive: true });
+  if (!board) return res.status(404).json({ error: "Not found" });
+  if (!mongoose.isValidObjectId(idParam)) return res.status(404).json({ error: "Not found" });
+  const doc = await BoardPost.findOneAndUpdate(
+    { _id: idParam, boardId: board._id, isActive: true },
+    { $inc: { viewCount: 1 } },
+    { new: true }
+  ).lean();
   if (!doc) return res.status(404).json({ error: "Not found" });
   res.json(doc);
+}
+
+router.get("/boards/:slug", async (req, res) => {
+  const board = await Board.findOne({ slug: String(req.params.slug || "").toLowerCase(), isActive: true }).lean();
+  if (!board) return res.status(404).json({ error: "Not found" });
+  res.json(board);
 });
 
-router.get("/events", async (req, res) => {
-  const { search } = req.query;
-  const { page, limit, skip } = parsePagination(req, 10);
-  const filter = { isActive: true };
-  if (search && String(search).trim()) {
-    filter.$or = [
-      { title: new RegExp(String(search).trim(), "i") },
-      { summary: new RegExp(String(search).trim(), "i") },
-    ];
-  }
-  const [items, total] = await Promise.all([
-    Event.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).select("-content").lean(),
-    Event.countDocuments(filter),
-  ]);
-  res.json({ items, total, page, limit, hasMore: skip + items.length < total });
-});
+router.get("/boards/:slug/posts", async (req, res) => listBoardPostsBySlug(req, res, req.params.slug));
 
-router.get("/events/:id", async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Not found" });
-  const doc = await Event.findOne({ _id: req.params.id, isActive: true }).lean();
-  if (!doc) return res.status(404).json({ error: "Not found" });
-  res.json(doc);
-});
+router.get("/boards/:slug/posts/:id", async (req, res) => getBoardPostBySlug(req, res, req.params.slug, req.params.id));
 
-router.get("/references", async (req, res) => {
-  const { search } = req.query;
-  const { page, limit, skip } = parsePagination(req, 10);
-  const filter = { isActive: true };
-  if (search && String(search).trim()) {
-    filter.$or = [
-      { title: new RegExp(String(search).trim(), "i") },
-      { summary: new RegExp(String(search).trim(), "i") },
-    ];
-  }
-  const [items, total] = await Promise.all([
-    Reference.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).select("-content").lean(),
-    Reference.countDocuments(filter),
-  ]);
-  res.json({ items, total, page, limit, hasMore: skip + items.length < total });
-});
-
-router.get("/references/:id", async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Not found" });
-  const doc = await Reference.findOne({ _id: req.params.id, isActive: true }).lean();
-  if (!doc) return res.status(404).json({ error: "Not found" });
-  res.json(doc);
-});
+router.get("/notices", (req, res) => listBoardPostsBySlug(req, res, "notices"));
+router.get("/notices/:id", (req, res) => getBoardPostBySlug(req, res, "notices", req.params.id));
+router.get("/events", (req, res) => listBoardPostsBySlug(req, res, "events"));
+router.get("/events/:id", (req, res) => getBoardPostBySlug(req, res, "events", req.params.id));
+router.get("/references", (req, res) => listBoardPostsBySlug(req, res, "references"));
+router.get("/references/:id", (req, res) => getBoardPostBySlug(req, res, "references", req.params.id));
 
 router.post("/inquiries", async (req, res) => {
-  const { name, company, email, phone, productId, productName, message } = req.body || {};
-  const trimmedName = String(name || "").trim();
-  const trimmedEmail = String(email || "").trim();
-  const trimmedMessage = String(message || "").trim();
+  const b = req.body || {};
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!trimmedName || !trimmedEmail) {
-    return res.status(400).json({ error: "이름과 이메일은 필수입니다." });
+
+  const inquirerType = String(b.inquirerType || "").toUpperCase();
+  const affiliation = String(b.affiliation ?? b.company ?? "").trim();
+  const name = String(b.name || "").trim();
+  const phone = String(b.phone || "").trim();
+  const email = String(b.email || "").trim();
+  const brand = String(b.brand || "").trim();
+  const catalogNumber = String(b.catalogNumber || "").trim();
+  const productName = String(b.productName || "").trim();
+  const quantity = String(b.quantity || "").trim();
+  const message = String(b.message || "").trim();
+  const howHeard = String(b.howHeard || "").trim();
+  const howHeardOther = String(b.howHeardOther || "").trim();
+  const attachmentUrl = String(b.attachmentUrl || "").trim();
+  const privacyAgreed = b.privacyAgreed === true || b.privacyAgreed === "true";
+
+  if (inquirerType !== "USER" && inquirerType !== "DEALER") {
+    return res.status(400).json({ error: "구분(유저/업자)을 선택해 주세요." });
   }
-  if (!emailRegex.test(trimmedEmail)) {
-    return res.status(400).json({ error: "유효한 이메일 형식이 아닙니다." });
+  if (!affiliation) return res.status(400).json({ error: "소속을 입력해 주세요." });
+  if (!name) return res.status(400).json({ error: "이름을 입력해 주세요." });
+  if (!phone) return res.status(400).json({ error: "전화번호를 입력해 주세요." });
+  if (!email) return res.status(400).json({ error: "이메일을 입력해 주세요." });
+  if (!emailRegex.test(email)) return res.status(400).json({ error: "유효한 이메일 형식이 아닙니다." });
+  if (!brand) return res.status(400).json({ error: "브랜드를 입력해 주세요." });
+  if (!catalogNumber) return res.status(400).json({ error: "카탈로그 넘버를 입력해 주세요." });
+  if (!productName) return res.status(400).json({ error: "제품명을 입력해 주세요." });
+  if (!privacyAgreed) return res.status(400).json({ error: "개인정보 수집 및 이용에 동의해 주세요." });
+
+  if (howHeard && !Object.values(HowHeard).includes(howHeard)) {
+    return res.status(400).json({ error: "알게 된 경로 값이 올바르지 않습니다." });
   }
-  if (!trimmedMessage) {
-    return res.status(400).json({ error: "문의 내용을 입력해 주세요." });
-  }
+
+  const productId = b.productId && mongoose.isValidObjectId(b.productId) ? b.productId : undefined;
+
   const inquiry = await Inquiry.create({
-    name: trimmedName,
-    company: company != null ? String(company).trim() : "",
-    email: trimmedEmail,
-    phone: phone != null ? String(phone).trim() : "",
-    productId: productId && mongoose.isValidObjectId(productId) ? productId : undefined,
-    productName: productName != null ? String(productName).trim() : "",
-    message: trimmedMessage,
+    inquirerType,
+    affiliation,
+    company: affiliation,
+    name,
+    email,
+    phone,
+    productId,
+    brand,
+    catalogNumber,
+    productName,
+    quantity,
+    message,
+    howHeard: howHeard || "",
+    howHeardOther: howHeard === HowHeard.OTHER ? howHeardOther : "",
+    attachmentUrl,
+    privacyAgreed: true,
   });
   try {
     await sendInquiryNotification(inquiry.toObject());

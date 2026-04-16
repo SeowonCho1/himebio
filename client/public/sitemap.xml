@@ -3,8 +3,12 @@
   <url><loc>https://example.com/</loc></url>
   <url><loc>https://example.com/partners</loc></url>
   <url><loc>https://example.com/synthesis</loc></url>
+  <url><loc>https://example.com/products</loc></url>
   <url><loc>https://example.com/events</loc></url>
   <url><loc>https://example.com/references</loc></url>
   <url><loc>https://example.com/notices</loc></url>
   <url><loc>https://example.com/inquiry</loc></url>
+  <url><loc>https://example.com/customer/order-guide</loc></url>
+  <url><loc>https://example.com/customer/about</loc></url>
+  <url><loc>https://example.com/customer/directions</loc></url>
 </urlset>
