@@ -1,4 +1,4 @@
-﻿import dotenv from "dotenv";
+import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import { connectDb } from "./config/db.js";
 import { Admin } from "./models/Admin.js";
@@ -9,6 +9,7 @@ import { Product } from "./models/Product.js";
 import { ProductCategory } from "./models/ProductCategory.js";
 import { Board, BoardDisplayType } from "./models/Board.js";
 import { BoardPost } from "./models/BoardPost.js";
+import { SiteSetting, SITE_SETTING_KEY } from "./models/SiteSetting.js";
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ async function run() {
     ProductCategory.deleteMany({}),
     BoardPost.deleteMany({}),
     Board.deleteMany({}),
+    SiteSetting.deleteMany({}),
   ]);
 
   const adminEmail = "admin@example.com";
@@ -118,11 +120,16 @@ async function run() {
       name: "Recombinant Protein A",
       category: PartnerType.MANUFACTURER,
       categoryId: catL3b._id,
+      category2Id: catL1._id,
+      productNumber: "PRD-001",
       partnerId: manufacturer._id,
       thumbnailUrl: "https://placehold.co/400x300?text=Protein+A",
+      imageUrl: "https://placehold.co/800x500?text=Protein+A+Detail",
       images: ["https://placehold.co/800x500?text=Protein+A+Detail"],
       shortDescription: "고순도 recombinant protein",
       description: "세포 실험용 고순도 단백질 시약입니다.",
+      contentHtml:
+        "<p>세포 실험용 고순도 단백질 시약입니다.</p><ul><li>저내성 설계</li><li>배치별 CoA 제공</li></ul>",
       specification: "1mg / 5mg / 10mg",
       isRecommended: true,
       isNew: true,
@@ -132,11 +139,15 @@ async function run() {
       name: "Custom Peptide Synthesis",
       category: PartnerType.SYNTHESIS,
       categoryId: catSynthChild._id,
+      category2Id: catL2._id,
+      productNumber: "PRD-002",
       partnerId: synthesis._id,
       thumbnailUrl: "https://placehold.co/400x300?text=Peptide+Service",
+      imageUrl: "https://placehold.co/800x500?text=Peptide+Service+Detail",
       images: ["https://placehold.co/800x500?text=Peptide+Service+Detail"],
       shortDescription: "맞춤 펩타이드 합성",
       description: "서열 기반 맞춤 합성 서비스를 제공합니다.",
+      contentHtml: "<p>서열 기반 맞춤 합성 서비스를 제공합니다.</p>",
       specification: "Purity 95%+ / 빠른 납기 옵션",
       isRecommended: true,
       isNew: false,
@@ -246,6 +257,7 @@ async function run() {
     {
       title: "공식 제조사 시약 라인업",
       imageUrl: "https://placehold.co/1200x400?text=Official+Manufacturers",
+      mobileImageUrl: "https://placehold.co/800x600?text=Official+M",
       linkUrl: "/partners",
       sortOrder: 1,
       isActive: true,
@@ -253,11 +265,30 @@ async function run() {
     {
       title: "맞춤 합성 서비스 안내",
       imageUrl: "https://placehold.co/1200x400?text=Custom+Synthesis",
+      mobileImageUrl: "https://placehold.co/800x600?text=Synthesis+M",
       linkUrl: "/synthesis",
       sortOrder: 2,
       isActive: true,
     },
   ]);
+
+  await SiteSetting.findOneAndUpdate(
+    { key: SITE_SETTING_KEY },
+    {
+      $set: {
+        headerLogoUrl: "https://placehold.co/200x48?text=Header+Logo",
+        footerLogoUrl: "https://placehold.co/160x40?text=Footer+Logo",
+        companyName: "(주)바이오트레이드 샘플",
+        footerTopBar: "고객지원 · 견적문의 · 제휴문의",
+        copyrightText: "© 2026 Bio Trade Sample. All rights reserved.",
+        address: "서울특별시 강남구 테헤란로 000 (로컬 개발용)",
+        tel: "02-0000-0000",
+        fax: "02-0000-0001",
+        email: "contact@example.com",
+      },
+    },
+    { upsert: true, new: true }
+  );
 
   await Popup.create({
     title: "4월 신규 프로모션",

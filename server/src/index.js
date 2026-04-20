@@ -1,6 +1,7 @@
-﻿import express from "express";
+import express from "express";
 import mongoose from "mongoose";
 import path from "path";
+import fs from "node:fs";
 import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
@@ -9,13 +10,7 @@ import multer from "multer";
 import { connectDb } from "./config/db.js";
 import publicRoutes from "./routes/public.js";
 import { authAdmin } from "./middleware/authAdmin.js";
-import {
-  configureCloudinary,
-  uploadBufferToCloudinary,
-  isCloudinaryConfigured,
-  saveUploadedImageLocally,
-  saveInquiryAttachmentLocally,
-} from "./utils/upload.js";
+import { configureCloudinary, storeAdminUpload, storeInquiryUpload } from "./utils/upload.js";
 import { Admin } from "./models/Admin.js";
 import { Banner } from "./models/Banner.js";
 import { Popup } from "./models/Popup.js";
@@ -31,6 +26,9 @@ import { SiteSetting, SITE_SETTING_KEY } from "./models/SiteSetting.js";
 dotenv.config();
 
 const app = express();
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
 const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
@@ -63,15 +61,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.post("/api/inquiry-upload", inquiryPublicUpload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "file required" });
   try {
-    let url;
-    if (isCloudinaryConfigured() && req.file.mimetype.startsWith("image/")) {
-      url = await uploadBufferToCloudinary(req.file.buffer, "bio-trade/inquiries");
-    } else {
-      const rel = await saveInquiryAttachmentLocally(req.file.buffer, req.file.mimetype);
-      const proto = req.protocol || "http";
-      const host = req.get("host") || "localhost";
-      url = `${proto}://${host}${rel}`;
-    }
+    const url = await storeInquiryUpload(req.file.buffer, req.file.mimetype, req);
     res.json({ url });
   } catch (e) {
     res.status(400).json({ error: e.message || "upload failed" });
@@ -90,9 +80,80 @@ app.post("/api/admin/login", async (req, res) => {
   res.json({ token, admin: { id: admin._id, email: admin.email, name: admin.name } });
 });
 
+const BOOLEAN_FIELD_NAMES = new Set([
+  "isActive",
+  "isNew",
+  "isRecommended",
+  "isImportant",
+  "showSearch",
+  "privacyAgreed",
+]);
+
+/** 스키마 type: Number — 비숫자·빈 문자열이 그대로 들어가면 Cast/검증 오류로 이후 수정도 막힐 수 있음 */
+const INTEGER_FIELD_SPEC = {
+  sortOrder: { fallback: 0 },
+  level: { fallback: 1, min: 1, max: 4 },
+  viewCount: { fallback: 0 },
+};
+
+function coerceIntegerFields(out) {
+  for (const [field, spec] of Object.entries(INTEGER_FIELD_SPEC)) {
+    if (!(field in out)) continue;
+    let v = out[field];
+    if (v === null || v === undefined || v === "") {
+      out[field] = spec.fallback;
+      continue;
+    }
+    if (typeof v === "boolean") {
+      out[field] = v ? 1 : 0;
+      continue;
+    }
+    const n = typeof v === "number" ? v : Number(String(v).trim().replace(/,/g, ""));
+    if (!Number.isFinite(n)) {
+      out[field] = spec.fallback;
+      continue;
+    }
+    let t = Math.trunc(n);
+    if (spec.min != null) t = Math.max(spec.min, t);
+    if (spec.max != null) t = Math.min(spec.max, t);
+    out[field] = t;
+  }
+}
+
+function isLikelyBooleanField(key) {
+  const k = String(key);
+  if (BOOLEAN_FIELD_NAMES.has(k)) return true;
+  return /^is[A-Z]/.test(k) || /^has[A-Z]/.test(k) || k === "showSearch" || k === "privacyAgreed";
+}
+
 function normalizeBody(input) {
   const out = {};
   for (const [key, value] of Object.entries(input || {})) {
+    if (isLikelyBooleanField(key)) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === "boolean") {
+        out[key] = value;
+        continue;
+      }
+      if (typeof value === "number" && !Number.isNaN(value)) {
+        out[key] = Boolean(value);
+        continue;
+      }
+      if (typeof value === "string") {
+        const t = value.trim();
+        if (t === "" || t === "undefined" || t === "null") continue;
+        if (t === "true" || t === "1") {
+          out[key] = true;
+          continue;
+        }
+        if (t === "false" || t === "0") {
+          out[key] = false;
+          continue;
+        }
+        continue;
+      }
+      continue;
+    }
     if (typeof value !== "string") {
       out[key] = value;
       continue;
@@ -112,6 +173,10 @@ function normalizeBody(input) {
     else if (/^-?\d+(\.\d+)?$/.test(trimmed)) out[key] = Number(trimmed);
     else out[key] = trimmed;
   }
+  for (const k of Object.keys(out)) {
+    if (isLikelyBooleanField(k) && out[k] === "") delete out[k];
+  }
+  coerceIntegerFields(out);
   return out;
 }
 
@@ -150,19 +215,33 @@ function createCrudRoutes(path, Model, searchFields = ["title"]) {
     res.json(doc);
   });
   app.post(`/api/admin/${path}`, authAdmin, async (req, res) => {
-    const doc = await Model.create(normalizeBody(req.body || {}));
-    res.status(201).json(doc);
+    try {
+      const doc = await Model.create(normalizeBody(req.body || {}));
+      res.status(201).json(doc);
+    } catch (e) {
+      if (e.name === "ValidationError" || e.name === "CastError") {
+        return res.status(400).json({ error: e.message });
+      }
+      throw e;
+    }
   });
   app.put(`/api/admin/${path}/:id`, authAdmin, async (req, res) => {
     if (!req.params.id?.match(/^[a-f0-9]{24}$/i)) {
       return res.status(400).json({ error: "Invalid id" });
     }
-    const doc = await Model.findByIdAndUpdate(req.params.id, normalizeBody(req.body || {}), {
-      new: true,
-      runValidators: true,
-    });
-    if (!doc) return res.status(404).json({ error: "Not found" });
-    res.json(doc);
+    try {
+      const doc = await Model.findByIdAndUpdate(req.params.id, normalizeBody(req.body || {}), {
+        new: true,
+        runValidators: true,
+      });
+      if (!doc) return res.status(404).json({ error: "Not found" });
+      res.json(doc);
+    } catch (e) {
+      if (e.name === "ValidationError" || e.name === "CastError") {
+        return res.status(400).json({ error: e.message });
+      }
+      throw e;
+    }
   });
   app.delete(`/api/admin/${path}/:id`, authAdmin, async (req, res) => {
     if (!req.params.id?.match(/^[a-f0-9]{24}$/i)) {
@@ -617,15 +696,7 @@ app.patch("/api/admin/inquiries/:id/status", authAdmin, async (req, res) => {
 app.post("/api/admin/upload", authAdmin, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "file required" });
   try {
-    let url;
-    if (isCloudinaryConfigured()) {
-      url = await uploadBufferToCloudinary(req.file.buffer);
-    } else {
-      const rel = await saveUploadedImageLocally(req.file.buffer, req.file.mimetype);
-      const proto = req.protocol || "http";
-      const host = req.get("host") || "localhost";
-      url = `${proto}://${host}${rel}`;
-    }
+    const url = await storeAdminUpload(req.file.buffer, req.file.mimetype, req);
     res.json({ url });
   } catch (e) {
     res.status(500).json({ error: "upload failed", detail: e.message });
@@ -642,6 +713,7 @@ const SITE_SETTING_FIELDS = [
   "tel",
   "fax",
   "email",
+  "businessRegistrationNumber",
   "termsTitle",
   "termsUrl",
   "privacyTitle",
@@ -697,6 +769,29 @@ app.delete("/api/admin/system-admins/:id", authAdmin, async (req, res) => {
   if (!doc) return res.status(404).json({ error: "Not found" });
   res.json({ ok: true });
 });
+
+function resolveClientDistDir() {
+  const candidates = [path.join(process.cwd(), "client", "dist"), path.join(process.cwd(), "..", "client", "dist")];
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, "index.html"))) return dir;
+  }
+  return null;
+}
+
+if (process.env.NODE_ENV === "production") {
+  const clientDist = resolveClientDistDir();
+  if (clientDist) {
+    app.use(express.static(clientDist, { index: false }));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+      if (req.method !== "GET" && req.method !== "HEAD") return next();
+      res.sendFile(path.join(clientDist, "index.html"));
+    });
+    console.log(`[startup] SPA: ${clientDist}`);
+  } else {
+    console.warn("[startup] client/dist 없음 — API만 제공 (프론트는 별도 호스팅 또는 빌드 경로 확인)");
+  }
+}
 
 app.use((err, _req, res, _next) => {
   console.error(err);

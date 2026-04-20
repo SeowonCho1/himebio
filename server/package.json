@@ -7,9 +7,12 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "seed": "node src/seed.js",
-    "clean-data": "node src/cleanContent.js"
+    "clean-data": "node src/cleanContent.js",
+    "test:s3": "node scripts/test-s3.mjs",
+    "seed:test-products": "node scripts/seed-test-products-by-category.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1030.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.5.1",
     "cors": "^2.8.5",

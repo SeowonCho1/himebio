@@ -50,7 +50,7 @@ router.get("/partners", async (req, res) => {
   if (type === PartnerType.MANUFACTURER || type === PartnerType.SYNTHESIS) filter.type = type;
   if (search && String(search).trim()) {
     const rx = new RegExp(String(search).trim(), "i");
-    filter.$or = [{ name: rx }, { productNumber: rx }, { shortDescription: rx }];
+    filter.$or = [{ name: rx }, { description: rx }, { websiteUrl: rx }];
   }
   const items = await Partner.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
   res.json(items);
@@ -85,6 +85,26 @@ function buildPublicCategoryTree(all) {
   return build(null);
 }
 
+/** 분류 ID 기준으로 본인 + 모든 하위 분류 _id (제품 categoryId가 하위 단계일 때도 목록에 포함) */
+function collectDescendantCategoryIdsIncludingSelf(rootId, flatCategories) {
+  const byParent = new Map();
+  for (const c of flatCategories) {
+    const k = c.parentId ? String(c.parentId) : "__root__";
+    if (!byParent.has(k)) byParent.set(k, []);
+    byParent.get(k).push(c);
+  }
+  const out = [];
+  const stack = [String(rootId)];
+  while (stack.length) {
+    const id = stack.pop();
+    out.push(id);
+    for (const ch of byParent.get(id) || []) {
+      stack.push(String(ch._id));
+    }
+  }
+  return out;
+}
+
 router.get("/product-categories", async (_req, res) => {
   const all = await ProductCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean();
   res.json({ tree: buildPublicCategoryTree(all) });
@@ -96,7 +116,12 @@ router.get("/products", async (req, res) => {
   const filter = { isActive: true };
   if (partnerId && mongoose.isValidObjectId(partnerId)) filter.partnerId = partnerId;
   if (category === PartnerType.MANUFACTURER || category === PartnerType.SYNTHESIS) filter.category = category;
-  if (categoryId && mongoose.isValidObjectId(categoryId)) filter.categoryId = categoryId;
+  if (categoryId && mongoose.isValidObjectId(categoryId)) {
+    const allCats = await ProductCategory.find({ isActive: true }).lean();
+    const subtreeIds = collectDescendantCategoryIdsIncludingSelf(categoryId, allCats);
+    const oids = subtreeIds.filter((id) => mongoose.isValidObjectId(id)).map((id) => new mongoose.Types.ObjectId(id));
+    filter.categoryId = oids.length ? { $in: oids } : new mongoose.Types.ObjectId(categoryId);
+  }
   if (category2Id && mongoose.isValidObjectId(category2Id)) filter.category2Id = category2Id;
   if (isRecommended === "true") filter.isRecommended = true;
   if (isNew === "true") filter.isNew = true;

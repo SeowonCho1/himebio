@@ -1,4 +1,4 @@
-﻿import { writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 
 const siteUrl = (process.env.VITE_SITE_URL || "https://example.com").replace(/\/$/, "");
 const routes = [

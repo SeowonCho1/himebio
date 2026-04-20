@@ -14,6 +14,7 @@ const siteSettingSchema = new mongoose.Schema(
     tel: { type: String, default: "" },
     fax: { type: String, default: "" },
     email: { type: String, default: "" },
+    businessRegistrationNumber: { type: String, default: "" },
     termsTitle: { type: String, default: "이용약관" },
     termsUrl: { type: String, default: "#" },
     privacyTitle: { type: String, default: "개인정보취급방침" },

@@ -1,0 +1,11 @@
+# Railway 프로젝트 루트에 두세요 (Git 저장소 루트 = d:\\cursorai).
+# 대시보드에서 Root Directory를 비워 두면 이 파일 기준으로 빌드됩니다.
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"

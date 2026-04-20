@@ -26,7 +26,7 @@ const productSchema = new mongoose.Schema(
     isNew: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
   },
-  { timestamps: true }
+  { timestamps: true, suppressReservedKeysWarning: true }
 );
 
 productSchema.index({ partnerId: 1, isActive: 1 });

@@ -10,10 +10,33 @@
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, setToken } from "./lib/api";
 import { CKEditor } from "@ckeditor/ckeditor5-react";
 import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
+
+function createUploadAdapter(loader) {
+  return {
+    async upload() {
+      const file = await loader.file;
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post("/admin/upload", formData);
+      const url = response?.data?.url;
+      if (!url) throw new Error("이미지 업로드 URL을 받지 못했습니다.");
+      return { default: url };
+    },
+    abort() {},
+  };
+}
+
+function ckEditorUploadPlugin(editor) {
+  editor.plugins.get("FileRepository").createUploadAdapter = (loader) => createUploadAdapter(loader);
+}
+
+const CKEDITOR_UPLOAD_CONFIG = {
+  extraPlugins: [ckEditorUploadPlugin],
+};
 
 function IconInquiry({ className = "w-6 h-6" }) {
   return (
@@ -44,7 +67,6 @@ function IconSearch({ className = "w-5 h-5" }) {
 
 const CUSTOMER_SUPPORT_SUB = [
   { to: "/notices", label: "공지사항" },
-  { to: "/customer/order-guide", label: "주문가이드" },
   { to: "/customer/about", label: "회사소개" },
   { to: "/customer/directions", label: "오시는길" },
   { to: "/inquiry", label: "견적문의" },
@@ -125,6 +147,8 @@ function Layout({ children }) {
   const [headerSearch, setHeaderSearch] = useState("");
   const [site, setSite] = useState(null);
   const [categoryTree, setCategoryTree] = useState([]);
+  const [panelHeight, setPanelHeight] = useState(0);
+  const dropdownInnerRef = useRef(null);
 
   const submitHeaderSearch = (e) => {
     e.preventDefault();
@@ -177,11 +201,17 @@ function Layout({ children }) {
   const activeMenu = TOP_MENUS.find((m) => m.key === panelMenuKey) || null;
   const activeItems = getDropdownItemsByMenu(panelMenuKey, categoryTree);
 
+  useLayoutEffect(() => {
+    if (!dropdownInnerRef.current) return;
+    const nextHeight = dropdownInnerRef.current.scrollHeight || 0;
+    setPanelHeight(nextHeight);
+  }, [panelMenuKey, panelVisible, activeItems.length]);
+
   return (
     <div className="flex min-h-screen grow flex-col overflow-x-clip bg-white">
-      <header className="sticky top-0 z-[100] shrink-0 bg-slate-100 text-slate-900 shadow-sm border-b border-slate-200">
+      <header className="sticky top-0 z-[100] shrink-0 bg-rose-50 text-slate-900 shadow-sm border-b border-rose-100">
         <div
-          className={`container mx-auto max-w-full md:max-w-[70%] px-4 flex flex-col py-3 md:py-4 ${
+          className={`container mx-auto max-w-full md:max-w-[85%] px-4 flex flex-col py-3 md:py-4 ${
             menuOpen ? "min-h-[150px] h-auto justify-start gap-3 md:h-[150px] md:justify-center md:gap-3" : "h-[150px] justify-center gap-3"
           }`}
         >
@@ -197,14 +227,14 @@ function Layout({ children }) {
             <form onSubmit={submitHeaderSearch} className="flex-1 min-w-0">
               <div className="relative">
                 <input
-                  className="w-full rounded-md bg-white text-slate-900 pl-4 pr-11 py-3 text-sm placeholder:text-slate-400 border-0 shadow-inner"
+                  className="w-full rounded-md bg-white text-slate-900 pl-4 pr-11 py-3 text-sm placeholder:text-slate-400 border border-rose-100 shadow-[inset_0_1px_1px_rgba(15,23,42,0.08),0_2px_8px_rgba(15,23,42,0.06)] focus:outline-none focus:ring-2 focus:ring-[#002D5E]/20 focus:border-[#002D5E]/30"
                   placeholder="찾으시는 제품·제조사 키워드를 입력해 주세요."
                   value={headerSearch}
                   onChange={(e) => setHeaderSearch(e.target.value)}
                 />
                 <button
                   type="submit"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-600 hover:text-slate-900"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-600 hover:text-slate-900 cursor-pointer"
                   aria-label="검색"
                 >
                   <IconSearch />
@@ -258,23 +288,31 @@ function Layout({ children }) {
 
             {activeMenu ? (
               <div
-                className={`absolute left-1/2 top-full z-[120] w-screen max-w-none -translate-x-1/2 border-t border-slate-300 bg-white text-left text-slate-900 shadow-lg transition-all duration-200 ease-out ${
+                className={`absolute left-1/2 top-full z-[120] w-screen max-w-none -translate-x-1/2 overflow-hidden border-t border-slate-300 bg-white text-left text-slate-900 shadow-lg transition-[height,opacity,transform] duration-300 ease-out ${
                   panelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
                 }`}
+                style={{ height: panelVisible ? panelHeight : 0 }}
                 role="navigation"
                 aria-label={`${activeMenu.label} 하위 메뉴`}
+                onMouseEnter={() => {
+                  if (panelMenuKey) setActiveDropdown(panelMenuKey);
+                }}
               >
-                <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6">
+                <div ref={dropdownInnerRef} className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6">
                   <div className="mx-auto max-w-[960px] grid grid-cols-[220px_minmax(0,1fr)] gap-8 items-center min-h-[160px]">
                     <div className="min-w-0 self-center">
                       <h3 className="text-2xl md:text-[30px] font-bold text-slate-950 leading-tight">{activeMenu.label}</h3>
                       <p className="text-slate-700 font-semibold tracking-wide mt-2 text-xs md:text-sm">{activeMenu.en}</p>
                     </div>
                     {activeItems.length > 0 ? (
-                      <ul className="grid grid-cols-1 gap-y-1 pt-1 w-full max-w-[320px] mx-auto text-left">
+                      <ul className="grid grid-cols-1 gap-y-1 py-2 w-full max-w-[320px] mx-auto text-left">
                         {activeItems.map((item) => (
                           <li key={`${activeMenu.key}-${item.to}-${item.label}`} className="w-full">
-                            <Link to={item.to} className="block w-full text-slate-900 hover:text-[#002D5E] text-[15px] md:text-base leading-8" onClick={closeMenus}>
+                            <Link
+                              to={item.to}
+                              className="block w-full rounded-md px-3 py-2 -mx-1 text-slate-900 text-[15px] md:text-base leading-snug transition-[font-weight] duration-150 hover:font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#002D5E]"
+                              onClick={closeMenus}
+                            >
                               {item.label}
                             </Link>
                           </li>
@@ -316,14 +354,22 @@ function Layout({ children }) {
           ) : null}
         </div>
       </header>
-      <main className="grow w-full min-h-0">{children}</main>
-      <footer className="mt-0 shrink-0 border-t border-slate-200 bg-slate-100">
+      {panelVisible ? (
+        <button
+          type="button"
+          aria-label="메뉴 닫기"
+          onClick={closeMenus}
+          className="hidden md:block fixed inset-x-0 bottom-0 top-[150px] z-[90] bg-black/35"
+        />
+      ) : null}
+      <main className={`grow w-full min-h-0 ${location.pathname === "/customer/about" ? "pb-0" : "pb-10 md:pb-12"}`}>{children}</main>
+      <footer className={`${location.pathname === "/customer/about" ? "mt-0" : "mt-10 md:mt-14"} shrink-0 border-t border-slate-200 bg-slate-100`}>
         <div className="bg-slate-100">
-          <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-8 space-y-6">
+          <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8 space-y-6">
             <div className="pb-6 border-b border-slate-300">
               <div>
                 {site?.footerLogoUrl ? (
-                  <img src={site.footerLogoUrl} alt="" className="max-w-[200px] h-auto object-contain" />
+                  <img src={site.footerLogoUrl } alt="" className="max-w-[200px] h-auto object-contain" />
                 ) : (
                   <div className="h-14 w-40 rounded bg-slate-100 border border-slate-200" />
                 )}
@@ -363,10 +409,11 @@ function Layout({ children }) {
                     </span>
                   ) : null}
                 </p>
+                {site?.businessRegistrationNumber ? <p>사업자등록번호 {site.businessRegistrationNumber}</p> : null}
               </div>
             </div>
 
-            <div className="text-center space-y-2">
+            <div className="text-center space-y-2 pb-2 md:pb-3">
               <div className="flex flex-wrap justify-center gap-2">
                 {site?.termsUrl ? (
                   <a
@@ -416,18 +463,30 @@ function IconHomeCrumb({ className = "w-4 h-4" }) {
   );
 }
 
-function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1 }) {
+function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subMenuIsActive, className = "" }) {
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
   const isCurrentSubMenu = (to) => location.pathname === to || location.pathname.startsWith(`${to}/`);
   const anchorIndex = subMenus.length ? (subMenuAnchorIndex >= 0 ? subMenuAnchorIndex : (segments || []).length - 1) : -1;
 
   useEffect(() => {
     setOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (e) => {
+      if (!rootRef.current) return;
+      if (rootRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
 
   return (
-    <div className="mt-2 md:mt-3">
+    <div ref={rootRef} className={`mt-2 md:mt-3 ${className}`}>
       <nav className="flex flex-wrap items-center gap-x-1.5 text-xs sm:text-sm text-slate-500" aria-label="현재 위치">
         <Link to="/" className="inline-flex items-center shrink-0 text-slate-500 hover:text-[#002D5E]" title="홈" aria-label="홈">
           <IconHomeCrumb />
@@ -448,7 +507,7 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1 }) {
                 )}
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center text-slate-500 hover:text-[#002D5E]"
+                  className="inline-flex cursor-pointer items-center justify-center text-slate-500 hover:text-[#002D5E]"
                   aria-label="하위 메뉴 열기"
                   aria-expanded={open}
                   onClick={() => setOpen((v) => !v)}
@@ -458,18 +517,21 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1 }) {
                   </svg>
                 </button>
                 {open ? (
-                  <div className="absolute left-0 top-full z-30 mt-1 min-w-[180px] overflow-hidden rounded border border-slate-200 bg-white shadow-lg">
-                    {subMenus.map((menu) => (
-                      <Link
-                        key={menu.to}
-                        to={menu.to}
-                        className={`block px-3 py-2 whitespace-nowrap ${
-                          isCurrentSubMenu(menu.to) ? "bg-slate-100 text-[#002D5E] font-medium" : "text-slate-700 hover:bg-slate-50 hover:text-[#002D5E]"
-                        }`}
-                      >
-                        {menu.label}
-                      </Link>
-                    ))}
+                  <div className="absolute left-0 top-full z-50 min-w-[180px] overflow-hidden rounded border border-slate-200 bg-white shadow-lg">
+                    {subMenus.map((menu) => {
+                      const active = subMenuIsActive ? subMenuIsActive(menu) : isCurrentSubMenu(menu.to);
+                      return (
+                        <Link
+                          key={`${menu.to}-${menu.label}`}
+                          to={menu.to}
+                          className={`block px-3 py-2 whitespace-nowrap ${
+                            active ? "bg-slate-100 text-[#002D5E] font-medium" : "text-slate-700 hover:bg-slate-50 hover:text-[#002D5E]"
+                          }`}
+                        >
+                          {menu.label}
+                        </Link>
+                      );
+                    })}
                   </div>
                 ) : null}
               </>
@@ -515,84 +577,211 @@ const BOARD_DETAIL_SLUG_TITLE = {
 function HeroCarousel({ slides }) {
   const list = slides?.length ? slides : [];
   const [idx, setIdx] = useState(0);
+  const [dragPx, setDragPx] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const viewportRef = useRef(null);
+  const dragStartClientX = useRef(0);
+  const suppressLinkClick = useRef(false);
+  const isDraggingRef = useRef(false);
+  /** setPointerCapture는 링크 click 타깃을 깨뜨릴 수 있어 window 리스너만 사용 */
+  const dragWindowListenersRef = useRef(null);
 
-  if (!list.length) return null;
+  const n = list.length;
+  const slidePct = n > 0 ? 100 / n : 100;
 
   useEffect(() => {
     if (list.length <= 1) return undefined;
-    const t = setInterval(() => setIdx((i) => (i + 1) % list.length), 6000);
+    const t = setInterval(() => {
+      if (!isDraggingRef.current) setIdx((i) => (i + 1) % list.length);
+    }, 6000);
     return () => clearInterval(t);
   }, [list.length]);
 
-  const s = list[idx];
+  useEffect(
+    () => () => {
+      const l = dragWindowListenersRef.current;
+      if (l) {
+        window.removeEventListener("pointermove", l.move);
+        window.removeEventListener("pointerup", l.up);
+        window.removeEventListener("pointercancel", l.up);
+        dragWindowListenersRef.current = null;
+      }
+    },
+    []
+  );
+
+  if (!list.length) return null;
+
   const go = (delta) => setIdx((i) => (i + delta + list.length) % list.length);
 
+  const onBannerLinkClick = (e) => {
+    if (suppressLinkClick.current) {
+      e.preventDefault();
+      suppressLinkClick.current = false;
+    }
+  };
+
+  const clearDragWindowListeners = () => {
+    const l = dragWindowListenersRef.current;
+    if (!l) return;
+    window.removeEventListener("pointermove", l.move);
+    window.removeEventListener("pointerup", l.up);
+    window.removeEventListener("pointercancel", l.up);
+    dragWindowListenersRef.current = null;
+  };
+
+  const onViewportPointerDown = (e) => {
+    if (n <= 1) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.target instanceof Element && e.target.closest("[data-hero-dots]")) return;
+
+    clearDragWindowListeners();
+
+    const pointerId = e.pointerId;
+    dragStartClientX.current = e.clientX;
+    isDraggingRef.current = true;
+    setIsDragging(true);
+    setDragPx(0);
+    suppressLinkClick.current = false;
+
+    const move = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      const w = viewportRef.current?.offsetWidth || 400;
+      const max = w * 0.55;
+      const raw = ev.clientX - dragStartClientX.current;
+      setDragPx(Math.max(-max, Math.min(max, raw)));
+    };
+
+    const up = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      clearDragWindowListeners();
+
+      const w = viewportRef.current?.offsetWidth || 1;
+      const dx = ev.clientX - dragStartClientX.current;
+      const threshold = Math.max(72, Math.min(200, w * 0.18));
+      let committed = false;
+      if (dx < -threshold) {
+        go(1);
+        committed = true;
+      } else if (dx > threshold) {
+        go(-1);
+        committed = true;
+      }
+      if (committed) suppressLinkClick.current = true;
+
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      setDragPx(0);
+    };
+
+    dragWindowListenersRef.current = { move, up };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
   return (
-    <section className="relative w-screen left-1/2 -translate-x-1/2 bg-[#0a2744]">
-      <div className="relative h-[min(52vw,420px)] md:h-[440px]">
-        {s.imageUrl || s.mobileImageUrl ? (
-          <picture className="absolute inset-0 block">
-            <source media="(max-width: 767px)" srcSet={s.mobileImageUrl || s.imageUrl} />
-            <img src={s.imageUrl || s.mobileImageUrl} alt={s.title || ""} className="absolute inset-0 w-full h-full object-cover" />
-          </picture>
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[#003a6b] via-[#002D5E] to-slate-900 flex items-center justify-center">
-            <p className="text-white/90 text-xl md:text-2xl font-semibold px-6 text-center">{s.title || "프로모션 배너"}</p>
-          </div>
-        )}
-        <div className="absolute inset-0 bg-black/25 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-black/60 to-transparent">
-          <p className="text-white text-lg md:text-xl font-semibold drop-shadow">{s.title}</p>
-          {s.linkUrl ? (
-            s.linkUrl.startsWith("http") ? (
-              <a
-                href={s.linkUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-block mt-2 text-sm text-white border border-white/80 rounded px-4 py-1.5 hover:bg-white/10"
+    <section className="relative w-screen left-1/2 -translate-x-1/2 bg-[#0a2744]" aria-roledescription="carousel" aria-label="메인 배너">
+      <div
+        ref={viewportRef}
+        onPointerDown={onViewportPointerDown}
+        className={`relative h-[min(52vw,420px)] md:h-[440px] overflow-hidden ${n > 1 ? "cursor-grab touch-none select-none active:cursor-grabbing" : ""}`}
+      >
+        <div
+          className={`hero-carousel-track flex h-full ease-out ${isDragging ? "" : "transition-transform duration-700"}`}
+          style={{
+            width: `${n * 100}%`,
+            transform: `translateX(calc(-${idx * slidePct}% + ${dragPx}px))`,
+          }}
+        >
+          {list.map((s, i) => {
+            const hasImage = Boolean(s.imageUrl || s.mobileImageUrl);
+            const link = String(s.linkUrl || "").trim();
+            const isExternal = /^https?:\/\//i.test(link);
+            const linkLabel = s.title ? `${s.title} 바로가기` : "배너 바로가기";
+            const gradientClass =
+              "absolute inset-0 bg-gradient-to-br from-[#003a6b] via-[#002D5E] to-slate-900 flex items-center justify-center text-center px-6";
+            const titleFallback = <p className="text-white/90 text-xl md:text-2xl font-semibold">{s.title || "프로모션 배너"}</p>;
+
+            return (
+              <div
+                key={s._id || `slide-${i}`}
+                className="relative h-full shrink-0 overflow-hidden"
+                style={{ width: `${slidePct}%` }}
+                aria-hidden={i !== idx}
               >
-                자세히 보기
-              </a>
-            ) : (
-              <Link
-                to={s.linkUrl}
-                className="inline-block mt-2 text-sm text-white border border-white/80 rounded px-4 py-1.5 hover:bg-white/10"
-              >
-                자세히 보기
-              </Link>
-            )
-          ) : null}
+                {hasImage ? (
+                  <>
+                    <picture className="absolute inset-0 block">
+                      <source media="(max-width: 767px)" srcSet={s.mobileImageUrl || s.imageUrl} />
+                      <img
+                        src={s.imageUrl || s.mobileImageUrl}
+                        alt={link ? "" : s.title || "메인 배너"}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        {...(link ? { role: "presentation" } : {})}
+                      />
+                    </picture>
+                    {link ? (
+                      isExternal ? (
+                        <a
+                          href={link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="absolute inset-0 z-[1] block cursor-pointer"
+                          aria-label={linkLabel}
+                          onClick={onBannerLinkClick}
+                        />
+                      ) : (
+                        <Link
+                          to={link}
+                          className="absolute inset-0 z-[1] block cursor-pointer"
+                          aria-label={linkLabel}
+                          onClick={onBannerLinkClick}
+                        />
+                      )
+                    ) : null}
+                  </>
+                ) : link ? (
+                  isExternal ? (
+                    <a
+                      href={link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`${gradientClass} cursor-pointer`}
+                      aria-label={linkLabel}
+                      onClick={onBannerLinkClick}
+                    >
+                      {titleFallback}
+                    </a>
+                  ) : (
+                    <Link to={link} className={`${gradientClass} cursor-pointer`} aria-label={linkLabel} onClick={onBannerLinkClick}>
+                      {titleFallback}
+                    </Link>
+                  )
+                ) : (
+                  <div className={gradientClass}>{titleFallback}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
         {list.length > 1 ? (
-          <>
-            <button
-              type="button"
-              onClick={() => go(-1)}
-              className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/35 text-white text-xl hover:bg-black/50"
-              aria-label="이전 배너"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => go(1)}
-              className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-black/35 text-white text-xl hover:bg-black/50"
-              aria-label="다음 배너"
-            >
-              ›
-            </button>
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-              {list.map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setIdx(i)}
-                  className={`h-2 rounded-full transition-all ${i === idx ? "w-8 bg-white" : "w-2 bg-white/50 hover:bg-white/70"}`}
-                  aria-label={`배너 ${i + 1}`}
-                />
-              ))}
-            </div>
-          </>
+          <div data-hero-dots className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 flex gap-2.5 items-center">
+            {list.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setIdx(i)}
+                className={`h-2.5 shrink-0 rounded-full transition-all duration-300 border border-black/15 ${
+                  i === idx
+                    ? "w-9 bg-white shadow-[0_3px_10px_rgba(0,0,0,0.45),0_1px_2px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.95)]"
+                    : "w-2.5 bg-white/85 shadow-[0_2px_6px_rgba(0,0,0,0.42),0_1px_2px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.55)] hover:bg-white hover:shadow-[0_3px_8px_rgba(0,0,0,0.48)]"
+                }`}
+                aria-label={`배너 ${i + 1}`}
+                aria-current={i === idx ? "true" : undefined}
+              />
+            ))}
+          </div>
         ) : null}
       </div>
     </section>
@@ -631,27 +820,27 @@ function Home() {
     <>
       <HeroCarousel slides={banners} />
       <section className="bg-white pt-10 md:pt-12 pb-10 md:pb-12">
-        <div className="container mx-auto max-w-full md:max-w-[70%] px-4">
+        <div className="container mx-auto max-w-full md:max-w-[85%] px-4">
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-slate-900">추천제품</h2>
             {/* <p className="text-slate-500 text-sm mt-1">대표 제품 라인업</p> */}
           </div>
-          <ProductGrid items={recommended} columns={4} />
+          <ProductGrid items={recommended} columns={4} variant="catalog-center" />
         </div>
       </section>
 
       <section className="bg-[#f4f4f4] pt-10 md:pt-12 pb-10 md:pb-12">
-        <div className="container mx-auto max-w-full md:max-w-[70%] px-4">
+        <div className="container mx-auto max-w-full md:max-w-[85%] px-4">
           <div className="mb-4">
             <h2 className="text-2xl font-bold text-slate-900">신상품</h2>
             {/* <p className="text-slate-500 text-sm mt-1">최근 등록 제품</p> */}
           </div>
-          <ProductGrid items={newItems} columns={4} />
+          <ProductGrid items={newItems} columns={4} variant="catalog-center" />
         </div>
       </section>
 
       <section className="bg-white pt-10 md:pt-12 pb-10 md:pb-12">
-        <div className="container mx-auto max-w-full md:max-w-[70%] px-4">
+        <div className="container mx-auto max-w-full md:max-w-[85%] px-4">
           <div className="mb-4">
             <h2 className="text-2xl font-bold text-slate-900">Partners</h2>
             {/* <p className="text-slate-500 text-sm mt-1">Partner logos</p> */}
@@ -663,28 +852,80 @@ function Home() {
   );
 }
 
-function ProductGrid({ items, columns = 4 }) {
+/** 신상·추천(핫) 배지. 둘 다이면 NEW만 표시 */
+function getProductListBadge(item) {
+  if (item?.isNew) return "NEW";
+  if (item?.isRecommended) return "BEST";
+  return null;
+}
+
+function ProductThumbBadge({ kind }) {
+  if (!kind) return null;
+  const cls =
+    kind === "NEW"
+      ? "bg-lime-500 shadow-sm"
+      : "bg-red-600 shadow-sm";
+  return (
+    <span
+      className={`absolute left-2 top-2 z-10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white ${cls}`}
+      aria-hidden
+    >
+      {kind}
+    </span>
+  );
+}
+
+function ProductGrid({ items, columns = 4, variant = "default" }) {
   const grid =
     columns === 3 ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4";
+  const isCatalogCard = variant === "catalog";
+  const isCatalogCenterCard = variant === "catalog-center";
+  const isCatalogLike = isCatalogCard || isCatalogCenterCard;
   return (
     <div className={grid}>
       {items.map((x) => (
-        <Link key={x._id} to={`/products/${x._id}`} className="card overflow-hidden hover:shadow-md transition-shadow">
-          <div className={`bg-slate-100 flex items-center justify-center ${columns === 3 ? "h-40 md:h-44" : "h-40 md:h-44"}`}>
+        <Link
+          key={x._id}
+          to={`/products/${x._id}`}
+          className={`overflow-hidden transition-shadow ${isCatalogLike ? "group block" : "card hover:shadow-md"}`}
+        >
+          <div
+            className={`relative bg-slate-100 flex items-center justify-center ${
+              isCatalogLike ? "aspect-square h-auto overflow-hidden border border-slate-200 transition-colors hover:border-red-600 group-hover:border-red-600" : columns === 3 ? "h-40 md:h-44" : "h-40 md:h-44"
+            }`}
+          >
+            <ProductThumbBadge kind={getProductListBadge(x)} />
             {x.thumbnailUrl ? (
-              <img src={x.thumbnailUrl} alt={x.name} className="h-full w-full object-cover" />
+              <img src={x.thumbnailUrl} alt={x.name} className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]" />
             ) : (
               <span className="text-slate-400 text-sm">No Image</span>
             )}
           </div>
-          {columns >= 3 ? (
+          {columns >= 3 && !isCatalogLike ? (
             <div className="bg-slate-200/90 px-3 py-2 text-sm font-semibold text-slate-800 border-t border-slate-300/60">
               {x.name}
             </div>
           ) : null}
-          <div className={`p-3 ${columns >= 3 ? "pt-2" : ""}`}>
-            {columns < 3 ? <div className="font-medium text-sm">{x.name}</div> : null}
-            <div className="text-xs text-slate-600 mt-1 line-clamp-2">{x.shortDescription}</div>
+          <div
+            className={`${
+              isCatalogCard
+                ? `px-0 py-3 min-h-[82px] flex flex-col items-end ${x.productNumber ? "justify-end" : "justify-start"} text-right`
+                : isCatalogCenterCard
+                ? `px-0 py-3 min-h-[82px] flex flex-col items-center ${x.productNumber ? "justify-end" : "justify-start"} text-center`
+                : `p-3 ${columns >= 3 ? "pt-2" : ""}`
+            }`}
+          >
+            {isCatalogLike ? (
+              <>
+                <div className="font-semibold text-[18px] leading-snug text-slate-800 line-clamp-2">{x.name}</div>
+                {x.productNumber ? <div className="text-base text-slate-600 mt-1">{x.productNumber}</div> : null}
+              </>
+            ) : (
+              <>
+                {columns < 3 ? <div className="font-medium text-sm">{x.name}</div> : null}
+                <div className="text-xs text-slate-600 mt-1 line-clamp-2">{x.shortDescription}</div>
+              </>
+            )}
           </div>
         </Link>
       ))}
@@ -698,32 +939,35 @@ function PartnerLogoMarquee({ partners }) {
   const startXRef = useRef(0);
   const startScrollLeftRef = useRef(0);
 
-  const logoItems = useMemo(() => {
-    const base = partners?.length ? partners : [];
-    return [...base, ...base];
-  }, [partners]);
+  const baseItems = useMemo(() => (partners || []).filter((p) => String(p.logoUrl || "").trim()), [partners]);
+  const repeats = baseItems.length ? Math.max(2, Math.ceil(14 / baseItems.length)) : 0;
+  const normalized = useMemo(() => Array.from({ length: repeats }, () => baseItems).flat(), [baseItems, repeats]);
+  const logoItems = useMemo(() => [...normalized, ...normalized], [normalized]);
 
-  if (!logoItems.length) {
+  if (!baseItems.length) {
     return <div className="text-sm text-slate-500 py-6 text-center">등록된 파트너 로고가 없습니다.</div>;
   }
 
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el) return undefined;
-    const speedPxPerSec = 28;
+    if (!el || !logoItems.length) return undefined;
+
     let rafId = 0;
     let prevTs = 0;
 
+    // "90s 한 바퀴" 느낌으로 반쪽 트랙 길이에 맞춰 속도를 자동 계산
     const tick = (ts) => {
       if (!prevTs) prevTs = ts;
-      const dt = ts - prevTs;
+      const dtSec = (ts - prevTs) / 1000;
       prevTs = ts;
 
       if (!isDownRef.current) {
         const half = el.scrollWidth / 2;
         if (half > 0) {
-          el.scrollLeft += (speedPxPerSec * dt) / 1000;
+          const speedPxPerSec = half / 90;
+          el.scrollLeft += speedPxPerSec * dtSec;
           if (el.scrollLeft >= half) el.scrollLeft -= half;
+          if (el.scrollLeft < 0) el.scrollLeft += half;
         }
       }
       rafId = window.requestAnimationFrame(tick);
@@ -750,36 +994,51 @@ function PartnerLogoMarquee({ partners }) {
     if (!el || !isDownRef.current) return;
     e.preventDefault();
     const x = e.pageX - el.offsetLeft;
-    const walk = (x - startXRef.current) * 1.35;
+    const walk = (x - startXRef.current) * 1.2;
     el.scrollLeft = startScrollLeftRef.current - walk;
   };
 
   return (
-    <div
-      ref={scrollerRef}
-      className="hide-scrollbar overflow-x-auto cursor-grab active:cursor-grabbing select-none py-2"
-      onMouseDown={onMouseDown}
-      onMouseUp={() => {
-        isDownRef.current = false;
-      }}
-      onMouseLeave={onMouseLeave}
-      onMouseMove={onMouseMove}
-    >
-      <div className="inline-flex items-center gap-6 md:gap-10 pr-6">
-        {logoItems.map((p, idx) => (
-          <Link
-            key={`${p._id || p.name}-${idx}`}
-            to={p._id ? `/partner/${p._id}` : "/partners"}
-            className="w-[150px] md:w-[170px] h-[56px] md:h-[64px] flex items-center justify-center shrink-0"
-            draggable={false}
-          >
-            {p.logoUrl ? (
+    <div className="partner-marquee py-2" aria-label="공식제조사 로고 캐러셀">
+      <div
+        ref={scrollerRef}
+        className="hide-scrollbar overflow-x-auto cursor-grab active:cursor-grabbing select-none"
+        onMouseDown={onMouseDown}
+        onMouseUp={() => {
+          isDownRef.current = false;
+        }}
+        onMouseLeave={onMouseLeave}
+        onMouseMove={onMouseMove}
+        onTouchStart={(e) => {
+          const el = scrollerRef.current;
+          if (!el) return;
+          isDownRef.current = true;
+          startXRef.current = e.touches[0].pageX - el.offsetLeft;
+          startScrollLeftRef.current = el.scrollLeft;
+        }}
+        onTouchEnd={() => {
+          isDownRef.current = false;
+        }}
+        onTouchMove={(e) => {
+          const el = scrollerRef.current;
+          if (!el || !isDownRef.current) return;
+          const x = e.touches[0].pageX - el.offsetLeft;
+          const walk = (x - startXRef.current) * 1.1;
+          el.scrollLeft = startScrollLeftRef.current - walk;
+        }}
+      >
+        <div className="partner-marquee-track">
+          {logoItems.map((p, idx) => (
+            <Link
+              key={`${p._id || p.name}-${idx}`}
+              to={p._id ? `/partner/${p._id}` : "/partners"}
+              className="partner-marquee-item"
+              draggable={false}
+            >
               <img src={p.logoUrl} alt={p.name} className="max-h-full max-w-full object-contain" draggable={false} />
-            ) : (
-              <span className="text-slate-400 text-xs">로고 없음</span>
-            )}
-          </Link>
-        ))}
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -796,6 +1055,22 @@ function findCategoryLabelPath(tree, id, prefix = "") {
     }
   }
   return "";
+}
+
+/** 루트→해당 노드 경로 (1차= [0], 2차= [1] …) */
+function findCategoryPathFromTree(tree, id) {
+  if (!id || !tree?.length) return null;
+  function walk(nodes) {
+    for (const n of nodes) {
+      if (String(n._id) === String(id)) return [n];
+      if (n.children?.length) {
+        const sub = walk(n.children);
+        if (sub) return [n, ...sub];
+      }
+    }
+    return null;
+  }
+  return walk(tree);
 }
 
 function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
@@ -834,11 +1109,26 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
       .finally(() => setLoading(false));
   }, [businessType, categoryId, search]);
 
+  const path = categoryId ? findCategoryPathFromTree(tree, categoryId) : null;
+  const l1Node = path?.[0] || null;
+  const secondLevel = l1Node?.children?.length ? l1Node.children : [];
   const catLabel = categoryId ? findCategoryLabelPath(tree, categoryId) : "";
+
   const isSynthesis = businessType === "SYNTHESIS";
   const pageTitle = isSynthesis ? "합성서비스" : "제품소개";
-  const pageSubtitle = isSynthesis ? "합성서비스 제품을 분류 또는 검색어로 찾아보실 수 있습니다." : "분류 또는 검색어로 제품을 찾아보실 수 있습니다.";
+  const pageSubtitle = isSynthesis
+    ? "합성서비스 제품을 분류 또는 검색어로 찾아보실 수 있습니다."
+    : "분류 또는 검색어로 제품을 찾아보실 수 있습니다.";
   const pagePath = isSynthesis ? "/synthesis" : "/products";
+
+  const setCategoryParams = (nextCatId) => {
+    const next = new URLSearchParams(sp);
+    if (nextCatId) next.set("categoryId", nextCatId);
+    else next.delete("categoryId");
+    if (search.trim()) next.set("search", search.trim());
+    else next.delete("search");
+    setSp(next, { replace: true });
+  };
 
   const applySearch = (e) => {
     e.preventDefault();
@@ -850,31 +1140,106 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
     setSp(next, { replace: true });
   };
 
+  const isL1ScopeOnly = Boolean(path && path.length === 1);
+  const showSecondaryAside = Boolean(l1Node && secondLevel.length > 0);
+
+  const linkWithSearch = (catId) => {
+    const p = new URLSearchParams();
+    if (catId) p.set("categoryId", String(catId));
+    if (search.trim()) p.set("search", search.trim());
+    const qs = p.toString();
+    return qs ? `${pagePath}?${qs}` : pagePath;
+  };
+
+  const productL1SubMenus = [
+    { to: linkWithSearch(""), label: "전체" },
+    ...(tree || []).map((n) => ({
+      to: linkWithSearch(n._id),
+      label: n.name,
+    })),
+  ];
+
+  const subMenuIsActive = (menu) => {
+    try {
+      const u = new URL(menu.to, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+      const m = u.searchParams.get("categoryId") || "";
+      return m === (categoryId || "");
+    } catch {
+      return false;
+    }
+  };
+
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
       <PageBreadcrumb
         segments={[
           { label: "제품 안내" },
           { to: pagePath, label: pageTitle },
           ...(catLabel ? [{ label: catLabel }] : []),
         ]}
+        subMenus={productL1SubMenus}
+        subMenuAnchorIndex={1}
+        subMenuIsActive={subMenuIsActive}
       />
       <PageHeroTitle title={catLabel || pageTitle} subtitle={pageSubtitle} />
       <PageContentRule />
-      <div className="mt-6 md:mt-8 space-y-4">
-        <form onSubmit={applySearch} className="mx-auto flex w-full max-w-[760px] flex-wrap justify-center gap-2">
-          <input
-            className={`${PAGE_SEARCH_INPUT_CLASS} min-w-[200px]`}
-            placeholder="제품명 검색"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button type="submit" className="px-4 py-2 rounded-md bg-[#002D5E] !text-white text-sm font-medium">
-            검색
-          </button>
-        </form>
-        {loading ? <p className="text-slate-500 py-8">불러오는 중…</p> : <ProductGrid items={items} />}
-        {!loading && items.length === 0 ? <p className="text-center text-slate-500 py-8">표시할 제품이 없습니다.</p> : null}
+
+      <div className="relative mt-6 md:mt-8 w-full">
+        <div className="space-y-4">
+          <form onSubmit={applySearch} className="flex w-full items-center justify-between gap-3">
+            <p className="text-slate-600 text-sm shrink-0">전체 : {items.length}</p>
+            <div className="flex w-full max-w-[420px] items-center gap-2">
+              <input
+                className="h-10 w-full rounded-none border border-slate-300 px-3 text-sm"
+                placeholder="제품명 검색"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <button type="submit" className="h-10 shrink-0 px-4 border border-slate-300 bg-white text-slate-700 text-sm hover:text-red-600">
+                검색
+              </button>
+            </div>
+          </form>
+          {loading ? <p className="text-slate-500 py-8">불러오는 중…</p> : <ProductGrid items={items} variant="catalog" />}
+          {!loading && items.length === 0 ? <p className="text-center text-slate-500 py-8">표시할 제품이 없습니다.</p> : null}
+        </div>
+        {showSecondaryAside ? (
+          <div
+            className="mt-6 w-full border-t border-slate-200 pt-4 lg:absolute lg:left-0 lg:top-0 lg:z-10 lg:mt-0 lg:w-44 lg:-translate-x-[calc(100%+1rem)] lg:border-0 lg:pt-0"
+            aria-label="2차 분류"
+          >
+            <div className="lg:sticky lg:top-28">
+              <nav className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCategoryParams(String(l1Node._id))}
+                  className={`text-left text-sm py-0.5 bg-transparent border-0 cursor-pointer ${
+                    isL1ScopeOnly ? "font-semibold text-black" : "text-black font-normal hover:underline"
+                  }`}
+                >
+                  {l1Node.name} 전체
+                </button>
+                {secondLevel.map((c) => {
+                  const isActive =
+                    String(categoryId) === String(c._id) ||
+                    (path && path.length >= 2 && String(path[1]._id) === String(c._id));
+                  return (
+                    <button
+                      key={c._id}
+                      type="button"
+                      onClick={() => setCategoryParams(String(c._id))}
+                      className={`text-left text-sm py-0.5 bg-transparent border-0 cursor-pointer ${
+                        isActive ? "font-semibold text-black" : "text-black font-normal hover:underline"
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -882,11 +1247,376 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
 
 function CustomerSupportStaticPage({ title, subtitle, body }) {
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
       <PageBreadcrumb segments={[{ label: "고객지원" }, { label: title }]} subMenus={CUSTOMER_SUPPORT_SUB} />
       <PageHeroTitle title={title} subtitle={subtitle} />
       <PageContentRule />
       <article className="mt-8 card p-6 md:p-8 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{body}</article>
+    </div>
+  );
+}
+
+function CompanyAboutPage() {
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const targets = Array.from(root.querySelectorAll("[data-about-reveal]"));
+    if (!targets.length) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.2, rootMargin: "0px 0px -10% 0px" }
+    );
+
+    targets.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className="company-about-page bg-[#f8fafc] pt-1 pb-8 md:pt-2 md:pb-10 lg:pt-2 lg:pb-12">
+      <div className="company-about-page__bg" aria-hidden />
+      <div className="company-about-page__veil" aria-hidden />
+      <div ref={rootRef} className="relative z-0 container mx-auto max-w-full md:max-w-[85%] px-4">
+        <div className="max-w-4xl text-left">
+          <div className="mb-3 md:mb-4">
+            <PageBreadcrumb segments={[{ label: "고객지원" }, { label: "회사소개" }]} subMenus={CUSTOMER_SUPPORT_SUB} className="!mt-0" />
+          </div>
+          <p data-about-reveal className="about-fade-up text-center mb-8 md:mb-10  pt-[70px]  text-[13px] md:text-sm font-medium tracking-wide text-[#002D5E]">
+            Customer Satisfaction <span className="mx-1.5 font-light text-slate-300">|</span> Value Creation{" "}
+            <span className="mx-1.5 font-light text-slate-300">|</span> Trust
+          </p>
+
+          <header data-about-reveal className="about-fade-up text-center">
+            <h1 className="text-3xl md:text-4xl lg:text-[2.65rem] font-bold leading-[1.2] tracking-tight text-slate-900">
+              고객중심, 가치창출, 신뢰
+            </h1>
+            <p className="mt-6 text-base md:text-lg text-slate-600 leading-relaxed font-medium">
+              최고의 고객만족과 글로벌 네트워크를 바탕으로
+              <br className="hidden sm:block" /> 연구 현장에 필요한 더 큰 새로운 가치를 전합니다.
+            </p>
+          </header>
+
+          <div className="mt-12 space-y-10 text-[18px] md:text-[19px] leading-[1.85] text-slate-600">
+            <div data-about-reveal className="about-fade-up space-y-5">
+              <p>
+                (주)하이미바이오메드는 생명과학 분야의 시약·화학물질 조달, 커스텀 시약 합성, 그리고 글로벌 무역을 하나의 흐름으로 연결하는 전문 기업입니다.
+                브랜드 &quot;Hi, Me&quot;(하이미)에는 나와 당신, 연구자와 산업이 서로 가깝게 만난다는 뜻을 담았습니다.
+              </p>
+              <p>
+                국내외 공식 제조사 및 파트너와 협력하여 연구기관·제약·바이오 기업이 필요로 하는 시약과 소재를 신속하고 안전하게 공급합니다.
+                견적문의를 통해 품목·수량·납기를 안내하며, 품질과 거래의 투명성을 최우선으로 합니다.
+              </p>
+              <p>
+                취급·소개 품목으로는 연구용 시약, 항체·단백질 관련 제품, 세포 실험 관련 자료, 분자생물학 시약, 각종 Assay·검출 키트 등 생명과학 연구에 널리 쓰이는 품목을 다루며,
+                고객의 연구 목적에 맞는 조달과 기술 지원을 이어가겠습니다.
+              </p>
+              <p className="text-slate-800 font-medium pt-1">(주)하이미바이오메드 임직원 일동</p>
+            </div>
+
+            <div data-about-reveal className="about-fade-up space-y-5 border-t border-slate-200 pt-10 pb-40">
+              <p>
+                Haime Biomed Co., Ltd. specializes in connecting life science reagents and chemical procurement, custom synthesis, and global trade in one streamlined
+                service. Our &quot;Hi, Me&quot; brand reflects our belief in bringing researchers and industry closer together.
+              </p>
+              <p>
+                We work with official manufacturers and partners worldwide to supply institutions and biopharma companies with the materials they need—quickly and
+                reliably. Through our inquiry process, we guide customers on product scope, quantity, and lead time, with quality and transparency as top priorities.
+              </p>
+              <p>
+                Our portfolio spans research reagents, antibody- and protein-related products, cell culture materials, molecular biology reagents, and widely used assay
+                and detection kits—supporting procurement and technical coordination aligned with each customer&apos;s research goals.
+              </p>
+              <p className="text-slate-800 font-medium">All employees, Haime Biomed Co., Ltd.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderGuidePage() {
+  const [partners, setPartners] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get("/partners")
+      .then((r) => setPartners(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setPartners([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const hasOrderGuideContent = (html) => {
+    const s = String(html || "").trim();
+    if (!s) return false;
+    const text = s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim();
+    if (text.length > 0) return true;
+    return /<img\s/i.test(s);
+  };
+  const withGuide = partners.filter((p) => hasOrderGuideContent(p.orderGuideHtml));
+
+  const intro = `1. 제품소개 또는 공식제조사 메뉴에서 품목을 확인합니다.
+2. 제품 상세 페이지에서 견적문의를 요청하거나, 견적문의 메뉴에서 일괄 문의를 남깁니다.
+3. 담당자 확인 후 이메일 또는 유선으로 연락드립니다.
+
+※ 납기·가격은 품목·수량에 따라 달라질 수 있습니다.`;
+
+  return (
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <PageBreadcrumb segments={[{ label: "고객지원" }, { label: "주문가이드" }]} subMenus={CUSTOMER_SUPPORT_SUB} />
+      <PageHeroTitle
+        title="주문가이드"
+        subtitle="주문 절차 및 유의사항입니다. 제조사별 주의·요구사항·납기 등은 관리자에서 등록한 내용이 아래에 표시됩니다."
+      />
+      <PageContentRule />
+      <article className="mt-8 card p-6 md:p-8 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{intro}</article>
+      {loading ? <p className="mt-6 text-slate-500 text-sm">불러오는 중…</p> : null}
+      {!loading && withGuide.length === 0 ? (
+        <p className="mt-6 text-sm text-slate-500">
+          등록된 제조사별 주문 안내가 없습니다. 관리자 &gt; 제조사 관리에서 &quot;주문가이드 안내&quot;를 입력할 수 있습니다.
+        </p>
+      ) : null}
+      <div className="mt-8 space-y-8">
+        {withGuide.map((p) => (
+          <section key={p._id} className="card p-6 md:p-8">
+            <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">{p.name}</h2>
+            <div
+              className="text-slate-700 text-sm leading-7 [&_img]:max-w-full [&_img]:h-auto prose prose-slate max-w-none"
+              dangerouslySetInnerHTML={{ __html: p.orderGuideHtml }}
+            />
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 본사 위치 (위도, 경도) — index.html의 카카오 스크립트 로드 후 예제와 동일하게 Map 생성 */
+const DIRECTIONS_CENTER = { lat: 37.57486436940351, lng: 127.0660243607457 };
+
+function escapeHtmlForMap(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function KakaoMapEmbed({ placeName = "" }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const mapContainer = containerRef.current;
+    if (!mapContainer) return undefined;
+
+    const lat = DIRECTIONS_CENTER.lat;
+    const lng = DIRECTIONS_CENTER.lng;
+    const mapOption = {
+      center: new kakao.maps.LatLng(lat, lng),
+      level: 3,
+    };
+    const map = new kakao.maps.Map(mapContainer, mapOption);
+
+    const markerPosition = new kakao.maps.LatLng(lat, lng);
+    const marker = new kakao.maps.Marker({ position: markerPosition });
+    marker.setMap(map);
+
+    const label = (placeName && placeName.trim()) || "오시는길";
+    const mapUrl = `https://map.kakao.com/link/map/${encodeURIComponent(label)},${lat},${lng}`;
+    const routeUrl = `https://map.kakao.com/link/to/${encodeURIComponent(label)},${lat},${lng}`;
+    const titleHtml = escapeHtmlForMap(label);
+    const iwContent = `<div style="padding:5px;font-size:12px;line-height:1.45;min-width:140px;">${titleHtml}<br><a href="${mapUrl}" style="color:#2563eb" target="_blank" rel="noreferrer">큰지도보기</a> <a href="${routeUrl}" style="color:#2563eb" target="_blank" rel="noreferrer">길찾기</a></div>`;
+
+    const infowindow = new kakao.maps.InfoWindow({
+      position: markerPosition,
+      content: iwContent,
+    });
+    infowindow.open(map, marker);
+
+    return () => {
+      mapContainer.innerHTML = "";
+    };
+  }, [placeName]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-[min(70vw,420px)] min-h-[280px] rounded-lg border border-slate-200 bg-slate-100 overflow-hidden"
+      role="presentation"
+      aria-label="약도"
+    />
+  );
+}
+
+function DirectionsIconPhone({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4.5 6.5c.5 7.5 5.5 12.5 13 13l2-3.5-3-2-2.5 1.5a9.2 9.2 0 0 1-5.5-5.5L10.5 8 8.5 5l-4 1.5z"
+      />
+    </svg>
+  );
+}
+
+function DirectionsIconFax({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path strokeLinecap="round" d="M8 7h8M8 11h8M8 15h5" />
+    </svg>
+  );
+}
+
+function DirectionsIconMail({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
+
+/** 푸터와 동일 출처: GET /site-settings (companyName, address, tel, fax, email) */
+function DirectionsSiteContact({ site }) {
+  const addrRaw = site?.address?.trim() || "";
+  const addrParts = addrRaw ? addrRaw.split(/\n+/).map((l) => l.trim()).filter(Boolean) : [];
+  const addrMain = addrParts[0] || "";
+  const addrExtra = addrParts.slice(1);
+  const emailLines = site?.email?.trim() ? site.email.trim().split(/\n+/).map((l) => l.trim()).filter(Boolean) : [];
+
+  const firstEmail = (line) => {
+    const m = line.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/);
+    return m ? m[0] : null;
+  };
+
+  const hasContact =
+    site &&
+    (site.companyName ||
+      addrRaw ||
+      site.tel ||
+      site.fax ||
+      site.email);
+
+  if (!site) {
+    return (
+      <div className="mt-8 rounded-lg border border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">
+        연락처 정보를 불러오는 중입니다…
+      </div>
+    );
+  }
+
+  if (!hasContact) {
+    return (
+      <div className="mt-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-600">
+        관리자 &gt; 기본 설정 &gt; 푸터/회사 정보에 주소·전화 등을 입력하면 이곳에도 동일하게 표시됩니다.
+      </div>
+    );
+  }
+
+  return (
+    <section
+      className="mt-8 rounded-lg border border-slate-200 bg-white px-5 py-6 md:px-8 md:py-8 text-left"
+      aria-labelledby="directions-contact-heading"
+    >
+      <h2 id="directions-contact-heading" className="sr-only">
+        연락처
+      </h2>
+      {site.companyName ? (
+        <p className="text-lg font-bold text-[#002D5E] tracking-tight mb-4">{site.companyName}</p>
+      ) : null}
+
+      {addrMain ? (
+        <div className="space-y-1 pb-4 border-b border-slate-200">
+          <p className="text-sm text-slate-800 leading-relaxed">{addrMain}</p>
+          {addrExtra.map((line, i) => (
+            <p key={i} className="text-xs text-slate-500 leading-relaxed">
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="divide-y divide-slate-200">
+        {site.tel ? (
+          <div className="flex items-start gap-3 py-3.5">
+            <DirectionsIconPhone className="w-5 h-5 shrink-0 text-red-600 mt-0.5" />
+            <span className="w-14 shrink-0 text-sm font-semibold text-slate-700 pt-0.5">TEL</span>
+            <a href={`tel:${site.tel.replace(/\s/g, "")}`} className="text-sm text-slate-800 hover:text-[#002D5E] pt-0.5">
+              {site.tel}
+            </a>
+          </div>
+        ) : null}
+        {site.fax ? (
+          <div className="flex items-start gap-3 py-3.5">
+            <DirectionsIconFax className="w-5 h-5 shrink-0 text-red-600 mt-0.5" />
+            <span className="w-14 shrink-0 text-sm font-semibold text-slate-700 pt-0.5">FAX</span>
+            <span className="text-sm text-slate-800 pt-0.5">{site.fax}</span>
+          </div>
+        ) : null}
+        {emailLines.length > 0 ? (
+          <div className="flex items-start gap-3 py-3.5">
+            <DirectionsIconMail className="w-5 h-5 shrink-0 text-red-600 mt-0.5" />
+            <span className="w-14 shrink-0 text-sm font-semibold text-slate-700 pt-0.5">E-mail</span>
+            <ul className="text-sm text-slate-800 space-y-1.5 pt-0.5 min-w-0 flex-1">
+              {emailLines.map((line, i) => {
+                const em = firstEmail(line);
+                return (
+                  <li key={`${i}-${line}`}>
+                    {em ? (
+                      <a href={`mailto:${em}`} className="text-[#002D5E] underline hover:text-[#001a3d] break-all">
+                        {line}
+                      </a>
+                    ) : (
+                      <span className="break-all">{line}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function DirectionsPage() {
+  const [site, setSite] = useState(null);
+
+  useEffect(() => {
+    api
+      .get("/site-settings")
+      .then((r) => setSite(r.data))
+      .catch(() => setSite(null));
+  }, []);
+
+  return (
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <PageBreadcrumb segments={[{ label: "고객지원" }, { label: "오시는길" }]} subMenus={CUSTOMER_SUPPORT_SUB} />
+      <PageHeroTitle
+        title="오시는길"
+      />
+      <PageContentRule />
+      <div className="mt-8 space-y-0">
+        <section aria-labelledby="directions-map-heading">
+          <h2 id="directions-map-heading" className="text-base font-semibold text-slate-900 mb-3">
+            위치 안내
+          </h2>
+          <KakaoMapEmbed placeName={site?.companyName || ""} />
+        </section>
+        <DirectionsSiteContact site={site} />
+      </div>
     </div>
   );
 }
@@ -910,7 +1640,7 @@ function PartnersPage({ type }) {
   }, [type, search]);
 
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
       <PageBreadcrumb
         segments={[
           { label: "제품 안내" },
@@ -987,7 +1717,7 @@ function PartnerProducts() {
   }, [partnerId]);
 
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
       <PageBreadcrumb
         segments={[
           { to: partnerListPath, label: partnerListLabel },
@@ -1015,12 +1745,30 @@ function ProductDetail() {
   const { id } = useParams();
   const [item, setItem] = useState(null);
   const [qty, setQty] = useState(1);
+  const [recommendedItems, setRecommendedItems] = useState([]);
 
   useEffect(() => {
     api.get(`/products/${id}`).then((r) => setItem(r.data));
   }, [id]);
 
-  if (!item) return <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-8">Loading...</div>;
+  useEffect(() => {
+    if (!item?._id) return;
+    api
+      .get("/products", {
+        params: {
+          isRecommended: true,
+          category: item.category,
+          limit: 24,
+        },
+      })
+      .then((r) => {
+        const rows = Array.isArray(r.data?.items) ? r.data.items : [];
+        setRecommendedItems(rows.filter((x) => String(x._id) !== String(item._id)));
+      })
+      .catch(() => setRecommendedItems([]));
+  }, [item?._id, item?.category]);
+
+  if (!item) return <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">Loading...</div>;
 
   const crumbTitle = item.name && item.name.length > 36 ? `${item.name.slice(0, 36)}…` : item.name;
   const inquiryLink = `/inquiry?productId=${item._id}&productName=${encodeURIComponent(item.name)}&catalogNumber=${encodeURIComponent(
@@ -1028,7 +1776,7 @@ function ProductDetail() {
   )}&quantity=${encodeURIComponent(String(qty))}`;
 
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
       <PageBreadcrumb segments={[{ to: "/partners", label: "제품 안내" }, { label: crumbTitle }]} />
       <PageHeroTitle
         title={item.name}
@@ -1038,7 +1786,8 @@ function ProductDetail() {
       <div className="mt-6 md:mt-8">
         <div className="card p-5 md:p-6 space-y-6">
           <section className="grid gap-6 md:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="rounded border overflow-hidden bg-slate-100 min-h-[260px]">
+            <div className="relative rounded border overflow-hidden bg-slate-100 min-h-[260px]">
+              <ProductThumbBadge kind={getProductListBadge(item)} />
               {item.imageUrl || item.thumbnailUrl ? (
                 <img src={item.imageUrl || item.thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
               ) : (
@@ -1112,8 +1861,129 @@ function ProductDetail() {
               </table>
             </div>
           </section>
+
+          <section className="border-t border-slate-200 pt-5">
+            <RecommendedProductsCarousel items={recommendedItems} />
+          </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RecommendedProductsCarousel({ items }) {
+  const viewportRef = useRef(null);
+  const dragPointerIdRef = useRef(null);
+  const dragStartXRef = useRef(0);
+  const dragStartScrollRef = useRef(0);
+  const movedRef = useRef(false);
+
+  const scrollByPage = (direction) => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const amount = Math.max(260, Math.floor(el.clientWidth * 0.85));
+    el.scrollBy({ left: direction * amount, behavior: "smooth" });
+  };
+
+  const onPointerDown = (e) => {
+    const el = viewportRef.current;
+    if (!el) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragPointerIdRef.current = e.pointerId;
+    dragStartXRef.current = e.clientX;
+    dragStartScrollRef.current = el.scrollLeft;
+    movedRef.current = false;
+    el.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    const el = viewportRef.current;
+    if (!el) return;
+    if (dragPointerIdRef.current == null || dragPointerIdRef.current !== e.pointerId) return;
+    const dx = e.clientX - dragStartXRef.current;
+    if (Math.abs(dx) > 4) movedRef.current = true;
+    el.scrollLeft = dragStartScrollRef.current - dx;
+  };
+
+  const onPointerUp = (e) => {
+    const el = viewportRef.current;
+    if (!el) return;
+    if (dragPointerIdRef.current == null || dragPointerIdRef.current !== e.pointerId) return;
+    try {
+      el.releasePointerCapture(e.pointerId);
+    } catch {
+      /* noop */
+    }
+    dragPointerIdRef.current = null;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-lg font-semibold text-slate-900">추천상품</h3>
+        {items.length > 0 ? (
+          <div className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-50"
+              onClick={() => scrollByPage(-1)}
+              aria-label="추천상품 이전"
+            >
+              <IconChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-50"
+              onClick={() => scrollByPage(1)}
+              aria-label="추천상품 다음"
+            >
+              <IconChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-sm text-slate-500">등록된 추천상품이 없습니다.</p>
+      ) : (
+        <div
+          ref={viewportRef}
+          className="overflow-x-auto hide-scrollbar cursor-grab active:cursor-grabbing select-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <div className="flex gap-4 pb-1 min-w-max">
+            {items.map((x) => (
+              <Link
+                key={x._id}
+                to={`/products/${x._id}`}
+                className="group block w-[210px] sm:w-[220px] lg:w-[240px] shrink-0"
+                onClick={(e) => {
+                  if (movedRef.current) {
+                    e.preventDefault();
+                    movedRef.current = false;
+                  }
+                }}
+              >
+                <div className="relative aspect-square bg-slate-100 border border-slate-200 overflow-hidden">
+                  <ProductThumbBadge kind={getProductListBadge(x)} />
+                  {x.thumbnailUrl || x.imageUrl ? (
+                    <img src={x.thumbnailUrl || x.imageUrl} alt={x.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">이미지 없음</div>
+                  )}
+                </div>
+                <div className="pt-3">
+                  <p className="text-sm font-semibold text-slate-900 leading-snug line-clamp-2">{x.name}</p>
+                  {x.productNumber ? <p className="text-xs text-slate-500 mt-1">{x.productNumber}</p> : null}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1133,35 +2003,168 @@ function formatPostDate(d) {
   }
 }
 
+function paginationPageNumbers(page, totalPages, maxSlots = 5) {
+  const n = Math.max(1, totalPages);
+  if (n <= maxSlots) return Array.from({ length: n }, (_, i) => i + 1);
+  const half = Math.floor(maxSlots / 2);
+  let start = page - half;
+  let end = page + half - (maxSlots % 2 === 0 ? 1 : 0);
+  if (start < 1) {
+    start = 1;
+    end = maxSlots;
+  }
+  if (end > n) {
+    end = n;
+    start = n - maxSlots + 1;
+  }
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+}
+
+function IconChevronLeft({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M15 6l-6 6 6 6" />
+    </svg>
+  );
+}
+
+function IconChevronRight({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function IconShare2({ className = "w-4 h-4" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="18" cy="5" r="2.5" />
+      <circle cx="6" cy="12" r="2.5" />
+      <circle cx="18" cy="19" r="2.5" />
+      <path d="M8.3 10.8 15.6 6.3M8.3 13.2l7.3 4.5" />
+    </svg>
+  );
+}
+
+function IconPrint2({ className = "w-4 h-4" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M7 9V4h10v5" />
+      <rect x="4" y="9" width="16" height="8" rx="2" />
+      <path d="M7 14h10v6H7z" />
+      <path d="M17 11h.01" />
+    </svg>
+  );
+}
+
+/** 미니멀 원형 활성 표시(빨간 배경) + 좌우 화살표 */
+function CirclePagination({ page, totalPages, onPageChange, className = "" }) {
+  const n = Math.max(1, totalPages);
+  const nums = paginationPageNumbers(page, n, 5);
+  const navBtn =
+    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-900 transition-colors hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-35";
+  const pageBase =
+    "inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-full px-2 text-[15px] font-medium text-slate-900 transition-colors hover:bg-slate-100";
+  const pageActive = "bg-red-600 text-white shadow-none hover:bg-red-600 hover:text-white";
+
+  return (
+    <nav className={`flex flex-col items-center gap-2 ${className}`} aria-label="페이지 이동">
+      <div className="flex items-center justify-center gap-1 sm:gap-2">
+        <button type="button" className={navBtn} disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="이전 페이지">
+          <IconChevronLeft />
+        </button>
+        <div className="flex items-center gap-0.5 sm:gap-1 px-1">
+          {nums.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`${pageBase} ${p === page ? pageActive : ""}`}
+              onClick={() => onPageChange(p)}
+              aria-label={`${p}페이지`}
+              aria-current={p === page ? "page" : undefined}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <button type="button" className={navBtn} disabled={page >= n} onClick={() => onPageChange(page + 1)} aria-label="다음 페이지">
+          <IconChevronRight />
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 function BoardListPage({ slug, fallbackTitle }) {
   const [q, setQ] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const infiniteSentinelRef = useRef(null);
 
   useEffect(() => {
     setErr("");
+    if (page > 1) setLoadingMore(true);
     api
       .get(`/${slug}`, { params: { search: q, page, limit: 20 } })
-      .then((r) => setData(r.data))
-      .catch(() => setErr("목록을 불러오지 못했습니다."));
+      .then((r) => {
+        const incoming = r.data;
+        setData((prev) => {
+          if (
+            incoming?.board?.displayType === "THUMBNAIL_LIST" &&
+            page > 1 &&
+            prev?.board?.displayType === "THUMBNAIL_LIST"
+          ) {
+            return {
+              ...incoming,
+              items: [...(prev.items || []), ...(incoming.items || [])],
+            };
+          }
+          return incoming;
+        });
+      })
+      .catch(() => setErr("목록을 불러오지 못했습니다."))
+      .finally(() => setLoadingMore(false));
   }, [slug, q, page]);
 
   useEffect(() => {
     setQ("");
+    setSearchInput("");
     setPage(1);
   }, [slug]);
 
+  useEffect(() => {
+    if (!data?.board || data.board.displayType !== "THUMBNAIL_LIST") return undefined;
+    if (!data.hasMore || loadingMore) return undefined;
+    const target = infiniteSentinelRef.current;
+    if (!target) return undefined;
+    const ob = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (!first?.isIntersecting) return;
+        setLoadingMore(true);
+        setPage((p) => p + 1);
+      },
+      { rootMargin: "240px 0px" }
+    );
+    ob.observe(target);
+    return () => ob.disconnect();
+  }, [data?.board?.displayType, data?.hasMore, loadingMore]);
+
   if (err) {
     return (
-      <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-8">
+      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">
         <div className="card p-5 text-red-600">{err}</div>
       </div>
     );
   }
-  if (!data?.board) return <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-8">Loading…</div>;
+  if (!data?.board) return <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">Loading…</div>;
 
-  const { board, items, total, hasMore } = data;
+  const { board, items, total, hasMore, limit: listLimit = 20 } = data;
+  const totalPages = Math.max(1, Math.ceil((total ?? 0) / listLimit));
   const title = board.title || fallbackTitle;
   const displayType = board.displayType || "TABLE";
 
@@ -1180,27 +2183,56 @@ function BoardListPage({ slug, fallbackTitle }) {
 
   const shouldShowSearch = board.showSearch !== false;
 
+  const applySearch = (e) => {
+    e?.preventDefault?.();
+    setPage(1);
+    setQ(searchInput.trim());
+  };
+
   const searchBar = (
-    <div className="mb-5 flex justify-center">
-      <input
-        className={PAGE_SEARCH_INPUT_CLASS}
-        placeholder="검색"
-        value={q}
-        onChange={(e) => {
-          setQ(e.target.value);
-          setPage(1);
-        }}
-      />
-    </div>
+    <form onSubmit={applySearch} className="mb-5 flex w-full items-center justify-between gap-3">
+      <p className="text-slate-600 text-sm shrink-0">전체 : {total ?? 0}</p>
+      {shouldShowSearch ? (
+        <div className="w-full max-w-[420px]">
+          <label htmlFor={`board-search-${slug}`} className="sr-only">
+            게시글 검색
+          </label>
+          <div className="relative">
+          <input
+            id={`board-search-${slug}`}
+            className="h-10 w-full rounded-none border border-slate-300 pl-3 pr-10 text-sm"
+            placeholder="검색"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              applySearch();
+            }}
+          />
+          <button
+            type="submit"
+            className="absolute inset-y-0 right-0 px-3 inline-flex items-center text-slate-500 hover:text-slate-700 cursor-pointer"
+            aria-label="검색"
+            title="검색"
+          >
+            <IconSearch className="w-5 h-5" />
+          </button>
+          </div>
+        </div>
+      ) : (
+        <div />
+      )}
+    </form>
   );
 
   if (displayType === "GALLERY") {
     return (
-      <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
         {listPageHeader}
         <div className="mt-6 md:mt-8">
-        {shouldShowSearch ? searchBar : null}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {searchBar}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-4 gap-x-5 md:gap-x-6">
           {items.map((x) => (
             <Link key={x._id} to={`/${slug}/${x._id}`} className="card overflow-hidden hover:shadow-md transition-shadow block">
               <div className="aspect-square bg-slate-100 border-b border-slate-100">
@@ -1210,7 +2242,7 @@ function BoardListPage({ slug, fallbackTitle }) {
                   <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm">이미지 없음</div>
                 )}
               </div>
-              <div className="p-3">
+              <div className="px-4 py-3">
                 <h3 className="font-bold text-sm text-slate-900 leading-snug">{x.title}</h3>
                 <ul className="text-xs text-slate-600 mt-2 space-y-0.5 list-disc list-inside">
                   {(x.summary || "")
@@ -1227,16 +2259,9 @@ function BoardListPage({ slug, fallbackTitle }) {
           ))}
         </div>
         {items.length === 0 ? <p className="text-center text-slate-500 py-8">등록된 글이 없습니다.</p> : null}
-        <div className="flex justify-center gap-2 mt-6 text-sm">
-          <button type="button" disabled={page <= 1} className="px-3 py-1 border rounded disabled:opacity-40" onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            이전
-          </button>
-          <span className="px-2 py-1">
-            {page}페이지 {total != null ? `(총 ${total}건)` : ""}
-          </span>
-          <button type="button" disabled={!hasMore} className="px-3 py-1 border rounded disabled:opacity-40" onClick={() => setPage((p) => p + 1)}>
-            다음
-          </button>
+        <div className="mt-6 space-y-2">
+          <CirclePagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          {total != null ? <p className="text-center text-sm text-slate-500">총 {total}건</p> : null}
         </div>
         </div>
       </div>
@@ -1244,67 +2269,72 @@ function BoardListPage({ slug, fallbackTitle }) {
   }
 
   if (displayType === "THUMBNAIL_LIST") {
-    const now = new Date();
     return (
-      <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
         {listPageHeader}
         <div className="mt-6 md:mt-8">
-        {shouldShowSearch ? searchBar : null}
-        <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg overflow-hidden bg-white">
+        {searchBar}
+        <div className="bg-white border-t border-slate-300">
           {items.map((x) => {
-            const active =
-              (!x.endAt || new Date(x.endAt) >= now) && (!x.startAt || new Date(x.startAt) <= now);
             return (
-              <Link key={x._id} to={`/${slug}/${x._id}`} className="flex flex-col sm:flex-row gap-4 p-4 hover:bg-slate-50 transition-colors">
-                <div className="w-full sm:w-52 shrink-0 h-36 bg-slate-100 rounded overflow-hidden border border-slate-100">
+              <article key={x._id} className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_170px] gap-5 lg:gap-6 py-6 border-b border-slate-200">
+                <Link to={`/${slug}/${x._id}`} className="block w-full h-[132px] sm:h-[140px] lg:h-[124px] bg-slate-100 overflow-hidden border border-slate-200">
                   {x.thumbnailUrl ? (
-                    <img src={x.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                    <img src={x.thumbnailUrl} alt="" className="w-full h-full object-cover transition-transform duration-300 hover:scale-[1.02]" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">이미지 없음</div>
                   )}
+                </Link>
+
+                <div className="min-w-0 flex flex-col justify-center">
+                  <Link to={`/${slug}/${x._id}`} className="group block">
+                    <h3 className="font-bold text-[24px] leading-[1.35] tracking-[-0.01em] text-[#0f2340] group-hover:text-[#002D5E]">
+                      {x.title}
+                    </h3>
+                    {x.summary ? <p className="text-[18px] leading-[1.75] text-slate-600 mt-4 line-clamp-2">{x.summary}</p> : null}
+                  </Link>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    {active ? (
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-[#002D5E] text-white text-xs font-medium">진행중</span>
-                    ) : (
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-xs">종료</span>
-                    )}
-                    {x.startAt || x.endAt ? (
-                      <span className="text-slate-500 text-xs">
-                        {formatPostDate(x.startAt)} ~ {formatPostDate(x.endAt)}
-                      </span>
+
+                <div className="flex lg:justify-end items-center">
+                  <div className="w-full lg:w-auto flex flex-row lg:flex-col gap-2">
+                    {x.youtubeUrl ? (
+                      <a
+                        href={x.youtubeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-2 h-10 min-w-[118px] px-4 rounded-lg border border-slate-300 bg-white text-slate-700 text-[17px] hover:border-slate-400 hover:bg-slate-50 transition-colors"
+                      >
+                        동영상 보기
+                        <span aria-hidden>›</span>
+                      </a>
                     ) : null}
+                    <Link
+                      to={`/${slug}/${x._id}`}
+                      className="inline-flex items-center justify-center gap-2 h-10 min-w-[118px] px-4 rounded-lg border border-slate-300 bg-white text-slate-700 text-[17px] hover:border-slate-400 hover:bg-slate-50 transition-colors"
+                    >
+                      자세히 보기
+                      <span aria-hidden>›</span>
+                    </Link>
                   </div>
-                  <h3 className="font-bold text-lg text-slate-900 mt-1">{x.title}</h3>
-                  <p className="text-sm text-slate-600 mt-1 line-clamp-2">{x.summary}</p>
                 </div>
-              </Link>
+              </article>
             );
           })}
         </div>
         {items.length === 0 ? <p className="text-center text-slate-500 py-8">등록된 글이 없습니다.</p> : null}
-        <div className="flex justify-center gap-2 mt-6 text-sm">
-          <button type="button" disabled={page <= 1} className="px-3 py-1 border rounded disabled:opacity-40" onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            이전
-          </button>
-          <span className="px-2 py-1">
-            {page}페이지 {total != null ? `(총 ${total}건)` : ""}
-          </span>
-          <button type="button" disabled={!hasMore} className="px-3 py-1 border rounded disabled:opacity-40" onClick={() => setPage((p) => p + 1)}>
-            다음
-          </button>
-        </div>
+        {hasMore ? <div ref={infiniteSentinelRef} className="h-8" aria-hidden /> : null}
+        {loadingMore ? <p className="text-center text-sm text-slate-500 py-2">더 불러오는 중…</p> : null}
+        {!hasMore && items.length > 0 ? <p className="text-center text-sm text-slate-400 py-2">마지막 글입니다.</p> : null}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
       {listPageHeader}
       <div className="mt-6 md:mt-8">
-      {shouldShowSearch ? searchBar : null}
+      {searchBar}
       <div className="overflow-x-auto border-x border-b border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-100 border-b border-slate-200">
@@ -1341,16 +2371,9 @@ function BoardListPage({ slug, fallbackTitle }) {
         </table>
       </div>
       {items.length === 0 ? <p className="text-center text-slate-500 py-8">등록된 글이 없습니다.</p> : null}
-      <div className="flex justify-center gap-2 mt-6 text-sm">
-        <button type="button" disabled={page <= 1} className="px-3 py-1 border rounded disabled:opacity-40" onClick={() => setPage((p) => Math.max(1, p - 1))}>
-          이전
-        </button>
-        <span className="px-2 py-1">
-          {page}페이지 {total != null ? `(총 ${total}건)` : ""}
-        </span>
-        <button type="button" disabled={!hasMore} className="px-3 py-1 border rounded disabled:opacity-40" onClick={() => setPage((p) => p + 1)}>
-          다음
-        </button>
+      <div className="mt-6 space-y-2">
+        <CirclePagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        {total != null ? <p className="text-center text-sm text-slate-500">총 {total}건</p> : null}
       </div>
       </div>
     </div>
@@ -1398,27 +2421,29 @@ function BoardPostDetailPage({ slug }) {
       .catch(() => setAdjacent({ prev: null, next: null }));
   }, [slug, id]);
 
-  if (err) return <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-8"><div className="card p-5 text-red-600">{err}</div></div>;
-  if (!item) return <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-8">Loading…</div>;
+  if (err) return <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8"><div className="card p-5 text-red-600">{err}</div></div>;
+  if (!item) return <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">Loading…</div>;
 
   const listPath = `/${slug}`;
   const boardListLabel = BOARD_DETAIL_SLUG_TITLE[slug] || slug;
   const crumbPost = item.title.length > 32 ? `${item.title.slice(0, 32)}…` : item.title;
 
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-6 md:py-8">
-      <PageBreadcrumb
-        segments={[
-          { label: "고객지원" },
-          { to: listPath, label: boardListLabel },
-          { label: crumbPost },
-        ]}
-        subMenus={slug === "notices" ? CUSTOMER_SUPPORT_SUB : []}
-        subMenuAnchorIndex={1}
-      />
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="mb-6 md:mb-10">
+        <PageBreadcrumb
+          segments={[
+            { label: "고객지원" },
+            { to: listPath, label: boardListLabel },
+            { label: crumbPost },
+          ]}
+          subMenus={slug === "notices" ? CUSTOMER_SUPPORT_SUB : []}
+          subMenuAnchorIndex={1}
+        />
+      </div>
       <PageContentRule />
-      <div className="mt-6 md:mt-8 space-y-4">
-      <article className="card p-5 md:p-6 text-slate-800">
+      <div className="mt-8 md:mt-12 space-y-4">
+      <article className="px-1 md:px-0 py-1 text-slate-800">
         <header className="border-b border-slate-200 pb-3 mb-5">
           <h1 className="text-xl md:text-2xl font-semibold text-slate-900">{item.title}</h1>
           <div className="mt-2 text-xs md:text-sm text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -1427,7 +2452,14 @@ function BoardPostDetailPage({ slug }) {
             <span>조회수 {item.viewCount || 0}</span>
           </div>
         </header>
-        {item.content ? <div className="prose prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: item.content }} /> : "본문 없음"}
+        {item.content ? (
+          <div
+            className="prose prose-slate max-w-none min-h-[220px] text-[15px] md:text-[16px] leading-7 [&_img]:max-w-full [&_img]:h-auto"
+            dangerouslySetInnerHTML={{ __html: item.content }}
+          />
+        ) : (
+          "본문 없음"
+        )}
       </article>
         {item.youtubeUrl ? (
           <iframe
@@ -1437,10 +2469,10 @@ function BoardPostDetailPage({ slug }) {
             allowFullScreen
           />
         ) : null}
-        <div className="flex justify-end items-center gap-2 text-sm text-slate-600">
+        <div className="flex justify-end items-center gap-3 text-sm text-slate-500">
           <button
             type="button"
-            className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 hover:text-slate-800"
             onClick={async () => {
               const url = window.location.href;
               try {
@@ -1454,14 +2486,19 @@ function BoardPostDetailPage({ slug }) {
               }
             }}
           >
-            공유
+            <IconShare2 className="w-4 h-4" />
+            <span className="sr-only">공유</span>
           </button>
-          <button type="button" className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50" onClick={() => window.print()}>
-            프린트
+          <button type="button" className="inline-flex items-center gap-1.5 hover:text-slate-800" onClick={() => window.print()}>
+            <IconPrint2 className="w-4 h-4" />
+            <span className="sr-only">프린트</span>
           </button>
         </div>
-        <div className="border border-slate-200 rounded bg-white divide-y">
+        <div className="border-y border-slate-200 divide-y">
           <div className="flex items-center gap-3 px-4 py-3 text-sm">
+            <span className="text-slate-400 shrink-0" aria-hidden>
+              ˄
+            </span>
             <span className="text-slate-500 shrink-0">이전글</span>
             {adjacent.prev ? (
               <Link to={`/${slug}/${adjacent.prev._id}`} className="text-slate-800 hover:text-[#002D5E] truncate">
@@ -1472,6 +2509,9 @@ function BoardPostDetailPage({ slug }) {
             )}
           </div>
           <div className="flex items-center gap-3 px-4 py-3 text-sm">
+            <span className="text-slate-400 shrink-0" aria-hidden>
+              ˅
+            </span>
             <span className="text-slate-500 shrink-0">다음글</span>
             {adjacent.next ? (
               <Link to={`/${slug}/${adjacent.next._id}`} className="text-slate-800 hover:text-[#002D5E] truncate">
@@ -1585,7 +2625,7 @@ function InquiryPage() {
 
   if (done) {
     return (
-      <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-8">
+      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">
         <div className="card p-8 text-center text-slate-800">
           <p className="text-lg font-semibold">문의가 접수되었습니다.</p>
           <p className="mt-2 text-slate-600 text-sm">빠른 시일 내에 연락드리겠습니다.</p>
@@ -1601,10 +2641,10 @@ function InquiryPage() {
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 md:py-8 pb-16 md:pb-24 ">
-      <PageBreadcrumb segments={[{ label: "고객지원" }, { label: "견적문의" }]} />
+      <PageBreadcrumb segments={[{ label: "고객지원" }, { label: "견적문의" }]} subMenus={CUSTOMER_SUPPORT_SUB} />
       <PageHeroTitle
         title="견적문의"
-        subtitle="견적 및 주문은 해당 제품 또는 서비스 페이지에서 신청해 주시면 더 빠르게 처리됩니다. 아래 폼으로 문의하시면 담당자가 연락드립니다."
+        subtitle="아래 폼으로 문의하시면 담당자가 연락드립니다."
       />
       <PageContentRule />
       <form onSubmit={onSubmit} className="card p-6 md:p-8 mt-6 md:mt-8 space-y-8 bg-white">
@@ -1860,7 +2900,6 @@ function AdminLogin() {
     e.preventDefault();
     try {
       const r = await api.post("/admin/login", { email, password });
-      localStorage.setItem("admin_token", r.data.token);
       setToken(r.data.token);
       nav("/admin");
     } catch {
@@ -1869,7 +2908,7 @@ function AdminLogin() {
   };
 
   return (
-    <div className="container mx-auto max-w-full md:max-w-[70%] px-4 py-10">
+    <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-10">
     <form onSubmit={submit} className="card p-5 max-w-md mx-auto space-y-3">
       <h1 className="font-bold text-lg">관리자 로그인</h1>
       <input className="w-full border rounded p-2" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -2197,6 +3236,241 @@ function AdminProductCategories() {
 
 const PARTNER_TYPE_LABELS = { MANUFACTURER: "제조사/대리", SYNTHESIS: "합성 서비스" };
 
+function AdminPartnersScreen() {
+  const [mode, setMode] = useState("list");
+  const [editing, setEditing] = useState(null);
+  const [q, setQ] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState({ items: [], total: 0, page: 1, totalPages: 1 });
+  const [feedback, setFeedback] = useState({ type: "", message: "" });
+
+  const blank = {
+    name: "",
+    type: "MANUFACTURER",
+    logoUrl: "",
+    description: "",
+    websiteUrl: "",
+    orderGuideHtml: "",
+    sortOrder: 0,
+    isActive: true,
+  };
+  const [form, setForm] = useState(blank);
+
+  const load = () =>
+    api
+      .get("/admin/partners", { params: { q, page, limit: 20 } })
+      .then((r) => setResult(r.data))
+      .catch(() => setFeedback({ type: "error", message: "목록을 불러오지 못했습니다." }));
+
+  useEffect(() => {
+    if (mode === "list") load();
+  }, [q, page, mode]);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setFeedback({ type: "", message: "" });
+    const payload = {
+      ...form,
+      sortOrder: Number(form.sortOrder) || 0,
+    };
+    try {
+      if (editing) await api.put(`/admin/partners/${editing}`, payload);
+      else await api.post("/admin/partners", payload);
+      setEditing(null);
+      setForm(blank);
+      setMode("list");
+      setFeedback({ type: "success", message: "저장되었습니다." });
+      load();
+    } catch (e2) {
+      setFeedback({ type: "error", message: e2.response?.data?.error || "저장에 실패했습니다." });
+    }
+  };
+
+  const edit = (x) => {
+    setEditing(x._id);
+    setForm({
+      name: x.name || "",
+      type: x.type || "MANUFACTURER",
+      logoUrl: x.logoUrl || "",
+      description: x.description || "",
+      websiteUrl: x.websiteUrl || "",
+      orderGuideHtml: x.orderGuideHtml || "",
+      sortOrder: x.sortOrder ?? 0,
+      isActive: x.isActive !== false,
+    });
+    setMode("edit");
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(blank);
+    setMode("create");
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("삭제할까요? 연결된 제품이 있으면 오류가 날 수 있습니다.")) return;
+    setFeedback({ type: "", message: "" });
+    try {
+      await api.delete(`/admin/partners/${id}`);
+      setFeedback({ type: "success", message: "삭제되었습니다." });
+      load();
+    } catch (e2) {
+      setFeedback({ type: "error", message: e2.response?.data?.error || "삭제에 실패했습니다." });
+    }
+  };
+
+  const onSearch = () => {
+    setPage(1);
+    setQ(searchInput.trim());
+  };
+
+  if (mode !== "list") {
+    return (
+      <form onSubmit={save} className="card p-4 space-y-3 max-w-3xl">
+        <div className="flex justify-between items-center">
+          <h2 className="font-bold">{mode === "create" ? "제조사 등록" : "제조사 수정"}</h2>
+          <button type="button" onClick={() => setMode("list")} className="text-sm text-slate-600">
+            목록으로
+          </button>
+        </div>
+        <label className="block text-sm font-medium">이름</label>
+        <input className="w-full border rounded p-2 text-sm" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        <label className="block text-sm font-medium">유형</label>
+        <select className="w-full border rounded p-2 text-sm" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+          {Object.entries(PARTNER_TYPE_LABELS).map(([k, lab]) => (
+            <option key={k} value={k}>
+              {lab}
+            </option>
+          ))}
+        </select>
+        <AdminImageField label="로고 이미지 URL" value={form.logoUrl} onChange={(url) => setForm({ ...form, logoUrl: url })} />
+        <label className="block text-sm font-medium">소개 (짧은 설명)</label>
+        <textarea className="w-full border rounded p-2 text-sm min-h-[80px]" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <label className="block text-sm font-medium">웹사이트 URL</label>
+        <input
+          className="w-full border rounded p-2 text-sm"
+          type="url"
+          placeholder="https://"
+          value={form.websiteUrl}
+          onChange={(e) => setForm({ ...form, websiteUrl: e.target.value })}
+        />
+        <div>
+          <label className="block text-sm font-medium mb-1">주문가이드 안내 (주의·요구사항·납기 등)</label>
+          <p className="text-xs text-slate-500 mb-2">에디터로 입력한 내용은 그대로 주문가이드 페이지에 표시됩니다.</p>
+          <div className="border rounded overflow-hidden">
+            <CKEditor editor={ClassicEditor} config={CKEDITOR_UPLOAD_CONFIG} data={form.orderGuideHtml || ""} onChange={(_, editor) => setForm({ ...form, orderGuideHtml: editor.getData() })} />
+          </div>
+        </div>
+        <label className="block text-sm font-medium">정렬 순서 (작을수록 앞)</label>
+        <input
+          type="number"
+          className="w-full border rounded p-2 text-sm max-w-[120px]"
+          value={form.sortOrder}
+          onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={Boolean(form.isActive)} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
+          공개(활성)
+        </label>
+        {feedback.message ? (
+          <p className={`text-sm ${feedback.type === "error" ? "text-red-600" : "text-emerald-700"}`}>{feedback.message}</p>
+        ) : null}
+        <button type="submit" className="bg-slate-900 text-white px-3 py-2 rounded">
+          저장
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <div className="card p-4">
+      <div className="flex flex-wrap gap-2 justify-between mb-3">
+        <h2 className="font-bold">제조사 관리</h2>
+        <button type="button" onClick={openCreate} className="bg-slate-900 text-white px-3 py-2 rounded text-sm">
+          등록
+        </button>
+      </div>
+      <div className="flex gap-2 mb-3">
+        <input
+          className={PAGE_SEARCH_INPUT_CLASS}
+          placeholder="이름·소개·URL 검색"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSearch();
+          }}
+        />
+        <button type="button" onClick={onSearch} className="px-3 py-2 rounded bg-slate-200">
+          검색
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border">
+          <thead className="bg-slate-100">
+            <tr>
+              <th className="border p-2 w-12">No</th>
+              <th className="border p-2 text-left">이름</th>
+              <th className="border p-2 text-left">유형</th>
+              <th className="border p-2 w-16">정렬</th>
+              <th className="border p-2 w-16">활성</th>
+              <th className="border p-2 w-28">관리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.items.map((x, idx) => (
+              <tr key={x._id}>
+                <td className="border p-2 text-center">{(page - 1) * (result.limit || 20) + idx + 1}</td>
+                <td className="border p-2 font-medium">{x.name}</td>
+                <td className="border p-2 text-slate-600">{PARTNER_TYPE_LABELS[x.type] || x.type}</td>
+                <td className="border p-2 text-center">{x.sortOrder ?? 0}</td>
+                <td className="border p-2 text-center">{x.isActive === false ? "N" : "Y"}</td>
+                <td className="border p-2 text-center">
+                  <button type="button" onClick={() => edit(x)} className="mr-2 text-blue-700">
+                    수정
+                  </button>
+                  <button type="button" onClick={() => remove(x._id)} className="text-red-600">
+                    삭제
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {result.items.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="border p-4 text-center text-slate-500">
+                  데이터가 없습니다.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-between items-center mt-3 text-sm">
+        <span>총 {result.total}건</span>
+        <div className="flex items-center gap-2">
+          <button type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="px-2 py-1 border rounded disabled:opacity-40">
+            이전
+          </button>
+          <span>
+            {page} / {result.totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={page >= result.totalPages}
+            onClick={() => setPage((p) => Math.min(result.totalPages, p + 1))}
+            className="px-2 py-1 border rounded disabled:opacity-40"
+          >
+            다음
+          </button>
+        </div>
+      </div>
+      {feedback.message && mode === "list" ? (
+        <p className={`text-sm mt-3 ${feedback.type === "error" ? "text-red-600" : "text-emerald-700"}`}>{feedback.message}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function AdminProductsScreen() {
   const [mode, setMode] = useState("list");
   const [editing, setEditing] = useState(null);
@@ -2380,7 +3654,7 @@ function AdminProductsScreen() {
         <input className="w-full border rounded p-2 text-sm" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} />
         <label className="block text-sm font-medium">본문</label>
         <div className="border rounded">
-          <CKEditor editor={ClassicEditor} data={form.contentHtml || ""} onChange={(_, editor) => setForm({ ...form, contentHtml: editor.getData() })} />
+          <CKEditor editor={ClassicEditor} config={CKEDITOR_UPLOAD_CONFIG} data={form.contentHtml || ""} onChange={(_, editor) => setForm({ ...form, contentHtml: editor.getData() })} />
         </div>
         <label className="block text-sm font-medium">규격</label>
         <textarea className="w-full border rounded p-2 text-sm min-h-[72px]" value={form.specification} onChange={(e) => setForm({ ...form, specification: e.target.value })} />
@@ -2613,6 +3887,20 @@ function CrudScreen({ title, path, fields }) {
               />
             );
           }
+          if (f === "sortOrder" || f === "level" || f === "viewCount") {
+            return (
+              <div key={f} className="space-y-1">
+                <label className="block text-sm font-medium">{CRUD_FIELD_LABELS[f] || f}</label>
+                <input
+                  type="number"
+                  className="w-full border rounded p-2"
+                  placeholder={f}
+                  value={v === "" || v === null || v === undefined ? "" : v}
+                  onChange={(e) => setForm({ ...form, [f]: e.target.value })}
+                />
+              </div>
+            );
+          }
           return (
             <div key={f} className="space-y-1">
               <label className="block text-sm font-medium">{CRUD_FIELD_LABELS[f] || f}</label>
@@ -2787,6 +4075,7 @@ function AdminFooterSettings() {
         tel: data.tel,
         fax: data.fax,
         email: data.email,
+        businessRegistrationNumber: data.businessRegistrationNumber,
         termsTitle: data.termsTitle,
         termsUrl: data.termsUrl,
         privacyTitle: data.privacyTitle,
@@ -2833,6 +4122,15 @@ function AdminFooterSettings() {
           <label className="block text-sm font-medium">이메일</label>
           <input className="w-full border rounded p-2 text-sm" type="email" value={data.email || ""} onChange={(e) => setData({ ...data, email: e.target.value })} />
         </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium">사업자등록번호</label>
+        <input
+          className="w-full border rounded p-2 text-sm"
+          placeholder="예: 123-45-67890"
+          value={data.businessRegistrationNumber || ""}
+          onChange={(e) => setData({ ...data, businessRegistrationNumber: e.target.value })}
+        />
       </div>
       <label className="block text-sm font-medium">Copyright 문구</label>
       <textarea className="w-full border rounded p-2 text-sm min-h-[72px]" value={data.copyrightText || ""} onChange={(e) => setData({ ...data, copyrightText: e.target.value })} />
@@ -3477,7 +4775,7 @@ function AdminBoardPostsPanel() {
         <textarea className="w-full border rounded p-2 text-sm min-h-[72px]" value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
         <label className="block text-xs font-medium text-slate-600">본문</label>
         <div className="border rounded bg-white">
-          <CKEditor editor={ClassicEditor} data={form.content || ""} onChange={(_e, editor) => setForm({ ...form, content: editor.getData() })} />
+          <CKEditor editor={ClassicEditor} config={CKEDITOR_UPLOAD_CONFIG} data={form.content || ""} onChange={(_e, editor) => setForm({ ...form, content: editor.getData() })} />
         </div>
         <AdminImageField label="썸네일 이미지" value={form.thumbnailUrl} onChange={(url) => setForm({ ...form, thumbnailUrl: url })} />
         <div className="grid sm:grid-cols-2 gap-3">
@@ -3578,7 +4876,7 @@ function AdminHome() {
   const [basicOpen, setBasicOpen] = useState(true);
   const [boardOpen, setBoardOpen] = useState(true);
   const navigate = useNavigate();
-  const contentTabOrder = ["banners", "popups", "productCategories", "products", "inquiries"];
+  const contentTabOrder = ["banners", "popups", "productCategories", "partners", "products", "inquiries"];
   const tabs = {
     logo: <AdminLogoSettings />,
     footer: <AdminFooterSettings />,
@@ -3586,6 +4884,7 @@ function AdminHome() {
     banners: <CrudScreen title="배너 관리" path="banners" fields={["title", "imageUrl", "mobileImageUrl", "linkUrl", "isActive", "sortOrder"]} />,
     popups: <CrudScreen title="팝업 관리" path="popups" fields={["title", "content", "imageUrl", "startAt", "endAt", "isActive"]} />,
     productCategories: <AdminProductCategories />,
+    partners: <AdminPartnersScreen />,
     products: <AdminProductsScreen />,
     boardSettings: <AdminBoardsPanel />,
     boardPosts: <AdminBoardPostsPanel />,
@@ -3598,6 +4897,7 @@ function AdminHome() {
     banners: "배너 관리",
     popups: "팝업 관리",
     productCategories: "분류 관리",
+    partners: "제조사 관리",
     products: "제품 관리",
     boardSettings: "게시판 설정",
     boardPosts: "글 관리",
@@ -3605,7 +4905,6 @@ function AdminHome() {
   };
 
   const logout = () => {
-    localStorage.removeItem("admin_token");
     setToken(null);
     navigate("/admin/login");
   };
@@ -3741,7 +5040,6 @@ function AdminHome() {
 function AdminRoute({ children }) {
   const token = localStorage.getItem("admin_token");
   if (!token) return <Navigate to="/admin/login" replace />;
-  setToken(token);
   return children;
 }
 
@@ -3768,44 +5066,12 @@ function AppRoutes() {
         <Route path="/partner/:partnerId/products" element={<PartnerProducts />} />
         <Route path="/products" element={<ProductCatalogPage businessType="MANUFACTURER" />} />
         <Route path="/products/:id" element={<ProductDetail />} />
-        <Route
-          path="/customer/order-guide"
-          element={
-            <CustomerSupportStaticPage
-              title="주문가이드"
-              subtitle="주문 절차 및 유의사항을 안내합니다. 세부 내용은 관리자에서 게시글 형태로 보강할 수 있습니다."
-              body={`1. 제품소개 또는 공식제조사 메뉴에서 품목을 확인합니다.
-2. 제품 상세 페이지에서 견적문의를 요청하거나, 견적문의 메뉴에서 일괄 문의를 남깁니다.
-3. 담당자 확인 후 이메일 또는 유선으로 연락드립니다.
-
-※ 납기·가격은 품목·수량에 따라 달라질 수 있습니다.`}
-            />
-          }
-        />
+        <Route path="/customer/order-guide" element={<OrderGuidePage />} />
         <Route
           path="/customer/about"
-          element={
-            <CustomerSupportStaticPage
-              title="회사소개"
-              subtitle="회사 개요 및 사업 영역입니다. 실제 소개 문구는 관리자 설정 또는 별도 에디터 연동으로 교체할 수 있습니다."
-              body={`바이오 시약 무역 전문 기업으로 연구기관·기업 고객에게 검증된 제조사 제품과 합성 서비스를 연결합니다.
-
-본 페이지는 안내용 예시 문구입니다. 회사 연혁, 비전, 조직도 등은 추후 반영해 주세요.`}
-            />
-          }
+          element={<CompanyAboutPage />}
         />
-        <Route
-          path="/customer/directions"
-          element={
-            <CustomerSupportStaticPage
-              title="오시는길"
-              subtitle="본사 위치 및 교통 안내입니다. 주소는 사이트 푸터 설정과 맞춰 주시기 바랍니다."
-              body={`대중교통 및 주차 안내는 준비 중입니다.
-
-지도 연동(네이버·카카오 지도)은 추후 추가할 수 있습니다.`}
-            />
-          }
-        />
+        <Route path="/customer/directions" element={<DirectionsPage />} />
         <Route path="/events" element={<BoardListPage slug="events" fallbackTitle="이벤트" />} />
         <Route path="/events/:id" element={<BoardPostDetailPage slug="events" />} />
         <Route path="/references" element={<BoardListPage slug="references" fallbackTitle="참고논문" />} />
@@ -3826,7 +5092,7 @@ function ScrollToTopButton() {
     <button
       type="button"
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      className="fixed right-4 bottom-4 md:right-6 md:bottom-6 z-[140] h-11 w-11 rounded-full border border-slate-300 bg-white/95 text-slate-700 shadow-md hover:bg-slate-50"
+      className="fixed right-4 bottom-4 md:right-6 md:bottom-6 z-[140] h-11 w-11 rounded-full border border-slate-300 bg-white/95 text-slate-700 shadow-md transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
       aria-label="맨 위로 이동"
       title="맨 위로"
     >
@@ -3845,4 +5111,5 @@ function App() {
 }
 
 export default App;
+
 

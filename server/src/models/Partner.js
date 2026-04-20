@@ -15,6 +15,8 @@ const partnerSchema = new mongoose.Schema(
     },
     logoUrl: { type: String, default: "" },
     description: { type: String, default: "" },
+    /** 주문가이드 등에 노출: 주의사항·요구사항·납기 등 (HTML, 관리자 에디터) */
+    orderGuideHtml: { type: String, default: "" },
     websiteUrl: { type: String, default: "" },
     sortOrder: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },

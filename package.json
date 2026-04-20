@@ -1,5 +1,12 @@
 {
-  "dependencies": {
-    "mongodb": "^7.1.1"
+  "name": "hime-biomed-monorepo",
+  "private": true,
+  "description": "Railway: client 빌드 후 Express가 /api와 정적 SPA를 함께 제공",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm ci --prefix client && npm run build --prefix client && npm ci --prefix server",
+    "start": "npm start --prefix server"
   }
 }
