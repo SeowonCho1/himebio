@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-const siteUrl = (process.env.VITE_SITE_URL || "https://example.com").replace(/\/$/, "");
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || "https://example.com").replace(/\/$/, "");
 const routes = [
   "/",
   "/partners",
@@ -33,4 +33,4 @@ const sitemap = [
 await writeFile("public/robots.txt", robots, "utf8");
 await writeFile("public/sitemap.xml", sitemap, "utf8");
 
-console.log(`[seo] generated with VITE_SITE_URL=${siteUrl}`);
+console.log(`[seo] generated with siteUrl=${siteUrl}`);

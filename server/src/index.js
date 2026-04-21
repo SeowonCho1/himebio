@@ -789,7 +789,7 @@ if (process.env.NODE_ENV === "production") {
     });
     console.log(`[startup] SPA: ${clientDist}`);
   } else {
-    console.warn("[startup] client/dist 없음 — API만 제공 (프론트는 별도 호스팅 또는 빌드 경로 확인)");
+    console.warn("[startup] client/dist 없음 — API만 제공 (프론트는 Next.js `npm start --prefix client` 또는 Docker로 별도 실행)");
   }
 }
 

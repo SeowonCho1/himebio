@@ -3,7 +3,7 @@
 const ADMIN_TOKEN_KEY = "admin_token";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:4000/api",
+  baseURL: process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000/api",
 });
 
 api.interceptors.request.use((config) => {

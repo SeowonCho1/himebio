@@ -1,19 +1,13 @@
-﻿import {
-  BrowserRouter,
-  Link,
-  NavLink,
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, setToken } from "./lib/api";
-import { CKEditor } from "@ckeditor/ckeditor5-react";
-import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
+﻿"use client";
+
+import Link from "next/link";
+import dynamic from "next/dynamic";
+import { usePathname, useRouter, useParams, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { NavLink } from "@/components/NavLink";
+import { api, setToken } from "@/lib/api";
+
+const ClientCkEditor = dynamic(() => import("@/components/ClientCkEditor"), { ssr: false });
 
 function createUploadAdapter(loader) {
   return {
@@ -129,7 +123,7 @@ function getDropdownItemsByMenu(menuKey, categoryTree) {
 function MobileCategoryLinks({ nodes, closeMenus, depth = 0 }) {
   return (nodes || []).map((node) => (
     <div key={node._id}>
-      <Link to={`/products?categoryId=${node._id}`} className={`block py-0.5 ${depth === 0 ? "font-medium" : "text-xs opacity-90 pl-2"}`} onClick={closeMenus}>
+      <Link href={`/products?categoryId=${node._id}`} className={`block py-0.5 ${depth === 0 ? "font-medium" : "text-xs opacity-90 pl-2"}`} onClick={closeMenus}>
         {`${depth > 0 ? `${" -".repeat(depth)} ` : ""}${node.name}`}
       </Link>
       {node.children?.length ? <MobileCategoryLinks nodes={node.children} closeMenus={closeMenus} depth={depth + 1} /> : null}
@@ -138,8 +132,8 @@ function MobileCategoryLinks({ nodes, closeMenus, depth = 0 }) {
 }
 
 function Layout({ children }) {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState("");
   const [panelMenuKey, setPanelMenuKey] = useState("");
@@ -153,7 +147,7 @@ function Layout({ children }) {
   const submitHeaderSearch = (e) => {
     e.preventDefault();
     const q = headerSearch.trim();
-    navigate(q ? `/partners?search=${encodeURIComponent(q)}` : "/partners");
+    router.push(q ? `/partners?search=${encodeURIComponent(q)}` : "/partners");
     setMenuOpen(false);
     setActiveDropdown("");
   };
@@ -180,7 +174,7 @@ function Layout({ children }) {
   useEffect(() => {
     setActiveDropdown("");
     setMenuOpen(false);
-  }, [location.pathname]);
+  }, [pathname]);
 
   useEffect(() => {
     if (activeDropdown) {
@@ -216,7 +210,7 @@ function Layout({ children }) {
           }`}
         >
           <div className="flex items-center gap-3 md:gap-4 shrink-0">
-            <Link to="/" className="shrink-0 flex items-center" title="홈" onClick={closeMenus}>
+            <Link href="/" className="shrink-0 flex items-center" title="홈" onClick={closeMenus}>
               <img
                 src={site?.headerLogoUrl || "/logo.svg"}
                 alt=""
@@ -244,7 +238,7 @@ function Layout({ children }) {
 
             <div className="flex items-center gap-1 shrink-0">
               <Link
-                to="/inquiry"
+                href="/inquiry"
                 className="inline-flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-slate-200"
                 title="견적문의"
                 onClick={closeMenus}
@@ -274,7 +268,7 @@ function Layout({ children }) {
               {TOP_MENUS.map((m) => (
                 <NavLink
                   key={m.key}
-                  to={m.to}
+                  href={m.to}
                   end={m.key === "products"}
                   className={navLinkClass}
                   onMouseEnter={() => setActiveDropdown(m.key)}
@@ -309,7 +303,7 @@ function Layout({ children }) {
                         {activeItems.map((item) => (
                           <li key={`${activeMenu.key}-${item.to}-${item.label}`} className="w-full">
                             <Link
-                              to={item.to}
+                              href={item.to}
                               className="block w-full rounded-md px-3 py-2 -mx-1 text-slate-900 text-[15px] md:text-base leading-snug transition-[font-weight] duration-150 hover:font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#002D5E]"
                               onClick={closeMenus}
                             >
@@ -331,20 +325,20 @@ function Layout({ children }) {
             <nav className="md:hidden shrink-0 border-t border-slate-300 pt-3 pb-1 max-h-[min(60vh,420px)] overflow-y-auto text-sm">
               <div className="flex flex-col gap-3">
                 {TOP_MENUS.map((m) => (
-                  <NavLink key={m.key} to={m.to} end={m.key === "products"} className={navLinkClass} onClick={closeMenus}>
+                  <NavLink key={m.key} href={m.to} end={m.key === "products"} className={navLinkClass} onClick={closeMenus}>
                     {m.label}
                   </NavLink>
                 ))}
                 <div className="pl-2 border-l border-slate-300 space-y-1.5 text-slate-700">
                   {categoryTree.length === 0 ? (
-                    <Link to="/products" className="block py-0.5" onClick={closeMenus}>
+                    <Link href="/products" className="block py-0.5" onClick={closeMenus}>
                       전체 제품
                     </Link>
                   ) : (
                     <MobileCategoryLinks nodes={categoryTree} closeMenus={closeMenus} />
                   )}
                   {CUSTOMER_SUPPORT_SUB.map((s) => (
-                    <Link key={s.to} to={s.to} className="block py-0.5" onClick={closeMenus}>
+                    <Link key={s.to} href={s.to} className="block py-0.5" onClick={closeMenus}>
                       {s.label}
                     </Link>
                   ))}
@@ -362,8 +356,8 @@ function Layout({ children }) {
           className="hidden md:block fixed inset-x-0 bottom-0 top-[150px] z-[90] bg-black/35"
         />
       ) : null}
-      <main className={`grow w-full min-h-0 ${location.pathname === "/customer/about" ? "pb-0" : "pb-10 md:pb-12"}`}>{children}</main>
-      <footer className={`${location.pathname === "/customer/about" ? "mt-0" : "mt-10 md:mt-14"} shrink-0 border-t border-slate-200 bg-slate-100`}>
+      <main className={`grow w-full min-h-0 ${pathname === "/customer/about" ? "pb-0" : "pb-10 md:pb-12"}`}>{children}</main>
+      <footer className={`${pathname === "/customer/about" ? "mt-0" : "mt-10 md:mt-14"} shrink-0 border-t border-slate-200 bg-slate-100`}>
         <div className="bg-slate-100">
           <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8 space-y-6">
             <div className="pb-6 border-b border-slate-300">
@@ -384,7 +378,7 @@ function Layout({ children }) {
                     <ul className="space-y-1">
                       {group.items.map((item) => (
                         <li key={`${group.title}-${item.to}`}>
-                          <Link to={item.to} className="text-sm text-slate-600 hover:text-[#002D5E]">
+                          <Link href={item.to} className="text-sm text-slate-600 hover:text-[#002D5E]">
                             {item.label}
                           </Link>
                         </li>
@@ -464,15 +458,16 @@ function IconHomeCrumb({ className = "w-4 h-4" }) {
 }
 
 function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subMenuIsActive, className = "" }) {
-  const location = useLocation();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  const isCurrentSubMenu = (to) => location.pathname === to || location.pathname.startsWith(`${to}/`);
+  const isCurrentSubMenu = (to) => pathname === to || pathname.startsWith(`${to}/`);
   const anchorIndex = subMenus.length ? (subMenuAnchorIndex >= 0 ? subMenuAnchorIndex : (segments || []).length - 1) : -1;
 
   useEffect(() => {
     setOpen(false);
-  }, [location.pathname, location.search]);
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -488,7 +483,7 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subM
   return (
     <div ref={rootRef} className={`mt-2 md:mt-3 ${className}`}>
       <nav className="flex flex-wrap items-center gap-x-1.5 text-xs sm:text-sm text-slate-500" aria-label="현재 위치">
-        <Link to="/" className="inline-flex items-center shrink-0 text-slate-500 hover:text-[#002D5E]" title="홈" aria-label="홈">
+        <Link href="/" className="inline-flex items-center shrink-0 text-slate-500 hover:text-[#002D5E]" title="홈" aria-label="홈">
           <IconHomeCrumb />
         </Link>
         {(segments || []).map((seg, i) => (
@@ -499,7 +494,7 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subM
             {subMenus.length && i === anchorIndex ? (
               <>
                 {seg.to ? (
-                  <Link to={seg.to} className="hover:text-[#002D5E] truncate min-w-0">
+                  <Link href={seg.to} className="hover:text-[#002D5E] truncate min-w-0">
                     {seg.label}
                   </Link>
                 ) : (
@@ -523,7 +518,7 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subM
                       return (
                         <Link
                           key={`${menu.to}-${menu.label}`}
-                          to={menu.to}
+                          href={menu.to}
                           className={`block px-3 py-2 whitespace-nowrap ${
                             active ? "bg-slate-100 text-[#002D5E] font-medium" : "text-slate-700 hover:bg-slate-50 hover:text-[#002D5E]"
                           }`}
@@ -536,7 +531,7 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subM
                 ) : null}
               </>
             ) : seg.to ? (
-              <Link to={seg.to} className="hover:text-[#002D5E] truncate min-w-0">
+              <Link href={seg.to} className="hover:text-[#002D5E] truncate min-w-0">
                 {seg.label}
               </Link>
             ) : (
@@ -733,7 +728,7 @@ function HeroCarousel({ slides }) {
                         />
                       ) : (
                         <Link
-                          to={link}
+                          href={link}
                           className="absolute inset-0 z-[1] block cursor-pointer"
                           aria-label={linkLabel}
                           onClick={onBannerLinkClick}
@@ -754,7 +749,7 @@ function HeroCarousel({ slides }) {
                       {titleFallback}
                     </a>
                   ) : (
-                    <Link to={link} className={`${gradientClass} cursor-pointer`} aria-label={linkLabel} onClick={onBannerLinkClick}>
+                    <Link href={link} className={`${gradientClass} cursor-pointer`} aria-label={linkLabel} onClick={onBannerLinkClick}>
                       {titleFallback}
                     </Link>
                   )
@@ -886,7 +881,7 @@ function ProductGrid({ items, columns = 4, variant = "default" }) {
       {items.map((x) => (
         <Link
           key={x._id}
-          to={`/products/${x._id}`}
+          href={`/products/${x._id}`}
           className={`overflow-hidden transition-shadow ${isCatalogLike ? "group block" : "card hover:shadow-md"}`}
         >
           <div
@@ -1031,7 +1026,7 @@ function PartnerLogoMarquee({ partners }) {
           {logoItems.map((p, idx) => (
             <Link
               key={`${p._id || p.name}-${idx}`}
-              to={p._id ? `/partner/${p._id}` : "/partners"}
+              href={p._id ? `/partner/${p._id}` : "/partners"}
               className="partner-marquee-item"
               draggable={false}
             >
@@ -1074,7 +1069,18 @@ function findCategoryPathFromTree(tree, id) {
 }
 
 function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
-  const [sp, setSp] = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
+  const setSp = useCallback(
+    (next, opts) => {
+      const qs = typeof next === "string" ? next.replace(/^\?/, "") : next.toString();
+      const url = qs ? `${pathname}?${qs}` : pathname;
+      if (opts?.replace) router.replace(url);
+      else router.push(url);
+    },
+    [pathname, router]
+  );
   const categoryId = sp.get("categoryId") || "";
   const urlSearch = sp.get("search") || "";
   const [search, setSearch] = useState(urlSearch);
@@ -1122,7 +1128,7 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
   const pagePath = isSynthesis ? "/synthesis" : "/products";
 
   const setCategoryParams = (nextCatId) => {
-    const next = new URLSearchParams(sp);
+    const next = new URLSearchParams(sp.toString());
     if (nextCatId) next.set("categoryId", nextCatId);
     else next.delete("categoryId");
     if (search.trim()) next.set("search", search.trim());
@@ -1132,7 +1138,7 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
 
   const applySearch = (e) => {
     e.preventDefault();
-    const next = new URLSearchParams(sp);
+    const next = new URLSearchParams(sp.toString());
     if (search.trim()) next.set("search", search.trim());
     else next.delete("search");
     if (categoryId) next.set("categoryId", categoryId);
@@ -1669,7 +1675,7 @@ function PartnersPage({ type }) {
       ) : null}
       <div className="grid md:grid-cols-3 gap-3">
         {items.map((p) => (
-          <Link key={p._id} to={`/partner/${p._id}`} className="card p-4">
+          <Link key={p._id} href={`/partner/${p._id}`} className="card p-4">
             <div className="font-semibold">{p.name}</div>
             <div className="text-sm text-slate-500">{p.description}</div>
           </Link>
@@ -1802,7 +1808,7 @@ function ProductDetail() {
                 <button type="button" className="inline-flex items-center border border-slate-300 text-slate-700 px-4 py-2 rounded text-sm hover:bg-slate-50" onClick={() => window.print()}>
                   프린트
                 </button>
-                <Link to={inquiryLink} className="inline-flex items-center border border-slate-300 text-slate-700 px-4 py-2 rounded text-sm hover:bg-slate-50">
+                <Link href={inquiryLink} className="inline-flex items-center border border-slate-300 text-slate-700 px-4 py-2 rounded text-sm hover:bg-slate-50">
                   제품 문의
                 </Link>
               </div>
@@ -1823,7 +1829,7 @@ function ProductDetail() {
           <section className="border-t border-slate-200 pt-5 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-slate-900">주문정보</h3>
-              <Link to={inquiryLink} className="inline-flex items-center rounded bg-[#002D5E] !text-white px-4 py-2 text-sm font-medium hover:opacity-95">
+              <Link href={inquiryLink} className="inline-flex items-center rounded bg-[#002D5E] !text-white px-4 py-2 text-sm font-medium hover:opacity-95">
                 견적문의
               </Link>
             </div>
@@ -1958,7 +1964,7 @@ function RecommendedProductsCarousel({ items }) {
             {items.map((x) => (
               <Link
                 key={x._id}
-                to={`/products/${x._id}`}
+                href={`/products/${x._id}`}
                 className="group block w-[210px] sm:w-[220px] lg:w-[240px] shrink-0"
                 onClick={(e) => {
                   if (movedRef.current) {
@@ -2234,7 +2240,7 @@ function BoardListPage({ slug, fallbackTitle }) {
         {searchBar}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-4 gap-x-5 md:gap-x-6">
           {items.map((x) => (
-            <Link key={x._id} to={`/${slug}/${x._id}`} className="card overflow-hidden hover:shadow-md transition-shadow block">
+            <Link key={x._id} href={`/${slug}/${x._id}`} className="card overflow-hidden hover:shadow-md transition-shadow block">
               <div className="aspect-square bg-slate-100 border-b border-slate-100">
                 {x.thumbnailUrl ? (
                   <img src={x.thumbnailUrl} alt="" className="w-full h-full object-cover" />
@@ -2278,7 +2284,7 @@ function BoardListPage({ slug, fallbackTitle }) {
           {items.map((x) => {
             return (
               <article key={x._id} className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_170px] gap-5 lg:gap-6 py-6 border-b border-slate-200">
-                <Link to={`/${slug}/${x._id}`} className="block w-full h-[132px] sm:h-[140px] lg:h-[124px] bg-slate-100 overflow-hidden border border-slate-200">
+                <Link href={`/${slug}/${x._id}`} className="block w-full h-[132px] sm:h-[140px] lg:h-[124px] bg-slate-100 overflow-hidden border border-slate-200">
                   {x.thumbnailUrl ? (
                     <img src={x.thumbnailUrl} alt="" className="w-full h-full object-cover transition-transform duration-300 hover:scale-[1.02]" />
                   ) : (
@@ -2287,7 +2293,7 @@ function BoardListPage({ slug, fallbackTitle }) {
                 </Link>
 
                 <div className="min-w-0 flex flex-col justify-center">
-                  <Link to={`/${slug}/${x._id}`} className="group block">
+                  <Link href={`/${slug}/${x._id}`} className="group block">
                     <h3 className="font-bold text-[24px] leading-[1.35] tracking-[-0.01em] text-[#0f2340] group-hover:text-[#002D5E]">
                       {x.title}
                     </h3>
@@ -2309,7 +2315,7 @@ function BoardListPage({ slug, fallbackTitle }) {
                       </a>
                     ) : null}
                     <Link
-                      to={`/${slug}/${x._id}`}
+                      href={`/${slug}/${x._id}`}
                       className="inline-flex items-center justify-center gap-2 h-10 min-w-[118px] px-4 rounded-lg border border-slate-300 bg-white text-slate-700 text-[17px] hover:border-slate-400 hover:bg-slate-50 transition-colors"
                     >
                       자세히 보기
@@ -2358,7 +2364,7 @@ function BoardListPage({ slug, fallbackTitle }) {
                   )}
                 </td>
                 <td className="p-3 text-left align-middle">
-                  <Link to={`/${slug}/${x._id}`} className="block w-full h-full">
+                  <Link href={`/${slug}/${x._id}`} className="block w-full h-full">
                     <span className="font-medium text-slate-900 hover:text-[#002D5E]">{x.title}</span>
                     {x.summary ? <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{x.summary}</p> : null}
                   </Link>
@@ -2501,7 +2507,7 @@ function BoardPostDetailPage({ slug }) {
             </span>
             <span className="text-slate-500 shrink-0">이전글</span>
             {adjacent.prev ? (
-              <Link to={`/${slug}/${adjacent.prev._id}`} className="text-slate-800 hover:text-[#002D5E] truncate">
+              <Link href={`/${slug}/${adjacent.prev._id}`} className="text-slate-800 hover:text-[#002D5E] truncate">
                 {adjacent.prev.title}
               </Link>
             ) : (
@@ -2514,7 +2520,7 @@ function BoardPostDetailPage({ slug }) {
             </span>
             <span className="text-slate-500 shrink-0">다음글</span>
             {adjacent.next ? (
-              <Link to={`/${slug}/${adjacent.next._id}`} className="text-slate-800 hover:text-[#002D5E] truncate">
+              <Link href={`/${slug}/${adjacent.next._id}`} className="text-slate-800 hover:text-[#002D5E] truncate">
                 {adjacent.next.title}
               </Link>
             ) : (
@@ -2523,7 +2529,7 @@ function BoardPostDetailPage({ slug }) {
           </div>
         </div>
         <div>
-          <Link className="inline-flex px-4 py-2 rounded bg-[#002D5E] !text-white text-sm font-medium hover:opacity-95" to={listPath}>
+          <Link className="inline-flex px-4 py-2 rounded bg-[#002D5E] !text-white text-sm font-medium hover:opacity-95" href={listPath}>
             목록
           </Link>
         </div>
@@ -2629,7 +2635,7 @@ function InquiryPage() {
         <div className="card p-8 text-center text-slate-800">
           <p className="text-lg font-semibold">문의가 접수되었습니다.</p>
           <p className="mt-2 text-slate-600 text-sm">빠른 시일 내에 연락드리겠습니다.</p>
-          <Link to="/" className="inline-block mt-6 text-[#002D5E] font-medium text-sm">
+          <Link href="/" className="inline-block mt-6 text-[#002D5E] font-medium text-sm">
             홈으로
           </Link>
         </div>
@@ -2891,7 +2897,7 @@ function InquiryPage() {
 }
 
 function AdminLogin() {
-  const nav = useNavigate();
+  const router = useRouter();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("admin1234");
   const [err, setErr] = useState("");
@@ -2901,7 +2907,7 @@ function AdminLogin() {
     try {
       const r = await api.post("/admin/login", { email, password });
       setToken(r.data.token);
-      nav("/admin");
+      router.push("/admin");
     } catch {
       setErr("로그인 실패");
     }
@@ -3359,7 +3365,11 @@ function AdminPartnersScreen() {
           <label className="block text-sm font-medium mb-1">주문가이드 안내 (주의·요구사항·납기 등)</label>
           <p className="text-xs text-slate-500 mb-2">에디터로 입력한 내용은 그대로 주문가이드 페이지에 표시됩니다.</p>
           <div className="border rounded overflow-hidden">
-            <CKEditor editor={ClassicEditor} config={CKEDITOR_UPLOAD_CONFIG} data={form.orderGuideHtml || ""} onChange={(_, editor) => setForm({ ...form, orderGuideHtml: editor.getData() })} />
+            <ClientCkEditor
+              config={CKEDITOR_UPLOAD_CONFIG}
+              data={form.orderGuideHtml || ""}
+              onChange={(html) => setForm({ ...form, orderGuideHtml: html })}
+            />
           </div>
         </div>
         <label className="block text-sm font-medium">정렬 순서 (작을수록 앞)</label>
@@ -3654,7 +3664,11 @@ function AdminProductsScreen() {
         <input className="w-full border rounded p-2 text-sm" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} />
         <label className="block text-sm font-medium">본문</label>
         <div className="border rounded">
-          <CKEditor editor={ClassicEditor} config={CKEDITOR_UPLOAD_CONFIG} data={form.contentHtml || ""} onChange={(_, editor) => setForm({ ...form, contentHtml: editor.getData() })} />
+          <ClientCkEditor
+            config={CKEDITOR_UPLOAD_CONFIG}
+            data={form.contentHtml || ""}
+            onChange={(html) => setForm({ ...form, contentHtml: html })}
+          />
         </div>
         <label className="block text-sm font-medium">규격</label>
         <textarea className="w-full border rounded p-2 text-sm min-h-[72px]" value={form.specification} onChange={(e) => setForm({ ...form, specification: e.target.value })} />
@@ -4775,7 +4789,11 @@ function AdminBoardPostsPanel() {
         <textarea className="w-full border rounded p-2 text-sm min-h-[72px]" value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
         <label className="block text-xs font-medium text-slate-600">본문</label>
         <div className="border rounded bg-white">
-          <CKEditor editor={ClassicEditor} config={CKEDITOR_UPLOAD_CONFIG} data={form.content || ""} onChange={(_e, editor) => setForm({ ...form, content: editor.getData() })} />
+          <ClientCkEditor
+            config={CKEDITOR_UPLOAD_CONFIG}
+            data={form.content || ""}
+            onChange={(html) => setForm({ ...form, content: html })}
+          />
         </div>
         <AdminImageField label="썸네일 이미지" value={form.thumbnailUrl} onChange={(url) => setForm({ ...form, thumbnailUrl: url })} />
         <div className="grid sm:grid-cols-2 gap-3">
@@ -4875,7 +4893,7 @@ function AdminHome() {
   const [tab, setTab] = useState("logo");
   const [basicOpen, setBasicOpen] = useState(true);
   const [boardOpen, setBoardOpen] = useState(true);
-  const navigate = useNavigate();
+  const router = useRouter();
   const contentTabOrder = ["banners", "popups", "productCategories", "partners", "products", "inquiries"];
   const tabs = {
     logo: <AdminLogoSettings />,
@@ -4906,7 +4924,7 @@ function AdminHome() {
 
   const logout = () => {
     setToken(null);
-    navigate("/admin/login");
+    router.push("/admin/login");
   };
 
   const selectBasic = (k) => {
@@ -4921,7 +4939,7 @@ function AdminHome() {
     <div className="min-h-screen bg-slate-100">
       <div className="flex">
         <aside className="w-64 min-h-screen bg-slate-900 text-white p-4">
-          <Link to="/" className="font-bold text-lg block mb-6">
+          <Link href="/" className="font-bold text-lg block mb-6">
             Admin Console
           </Link>
           <nav className="space-y-1">
@@ -5037,79 +5055,22 @@ function AdminHome() {
   );
 }
 
-function AdminRoute({ children }) {
-  const token = localStorage.getItem("admin_token");
-  if (!token) return <Navigate to="/admin/login" replace />;
-  return children;
-}
-
-function AppRoutes() {
-  const location = useLocation();
-  const isAdmin = location.pathname.startsWith("/admin");
-
-  if (location.pathname === "/admin/login") return <AdminLogin />;
-  if (isAdmin) {
-    return (
-      <AdminRoute>
-        <AdminHome />
-      </AdminRoute>
-    );
-  }
-
-  return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/partners" element={<PartnersPage type="MANUFACTURER" />} />
-        <Route path="/synthesis" element={<ProductCatalogPage businessType="SYNTHESIS" />} />
-        <Route path="/partner/:partnerId" element={<PartnerProducts />} />
-        <Route path="/partner/:partnerId/products" element={<PartnerProducts />} />
-        <Route path="/products" element={<ProductCatalogPage businessType="MANUFACTURER" />} />
-        <Route path="/products/:id" element={<ProductDetail />} />
-        <Route path="/customer/order-guide" element={<OrderGuidePage />} />
-        <Route
-          path="/customer/about"
-          element={<CompanyAboutPage />}
-        />
-        <Route path="/customer/directions" element={<DirectionsPage />} />
-        <Route path="/events" element={<BoardListPage slug="events" fallbackTitle="이벤트" />} />
-        <Route path="/events/:id" element={<BoardPostDetailPage slug="events" />} />
-        <Route path="/references" element={<BoardListPage slug="references" fallbackTitle="참고논문" />} />
-        <Route path="/references/:id" element={<BoardPostDetailPage slug="references" />} />
-        <Route path="/notices" element={<BoardListPage slug="notices" fallbackTitle="공지사항" />} />
-        <Route path="/notices/:id" element={<BoardPostDetailPage slug="notices" />} />
-        <Route path="/board/:slug" element={<BoardListPageFromParam />} />
-        <Route path="/board/:slug/:id" element={<BoardPostDetailFromParam />} />
-        <Route path="/inquiry" element={<InquiryPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Layout>
-  );
-}
-
-function ScrollToTopButton() {
-  return (
-    <button
-      type="button"
-      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      className="fixed right-4 bottom-4 md:right-6 md:bottom-6 z-[140] h-11 w-11 rounded-full border border-slate-300 bg-white/95 text-slate-700 shadow-md transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
-      aria-label="맨 위로 이동"
-      title="맨 위로"
-    >
-      ↑
-    </button>
-  );
-}
-
-function App() {
-  return (
-    <BrowserRouter>
-      <AppRoutes />
-      <ScrollToTopButton />
-    </BrowserRouter>
-  );
-}
-
-export default App;
-
+export {
+  Layout,
+  Home,
+  PartnersPage,
+  ProductCatalogPage,
+  PartnerProducts,
+  ProductDetail,
+  OrderGuidePage,
+  CompanyAboutPage,
+  DirectionsPage,
+  BoardListPage,
+  BoardPostDetailPage,
+  BoardListPageFromParam,
+  BoardPostDetailFromParam,
+  InquiryPage,
+  AdminLogin,
+  AdminHome,
+};
 

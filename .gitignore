@@ -5,6 +5,7 @@ node_modules/
 server/uploads/
 
 # Build outputs
+.next/
 dist/
 dist-ssr/
 build/

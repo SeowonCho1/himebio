@@ -1,7 +1,7 @@
 {
   "name": "hime-biomed-monorepo",
   "private": true,
-  "description": "Railway: client 빌드 후 Express가 /api와 정적 SPA를 함께 제공",
+  "description": "Express API + Next.js client (프론트는 Next standalone 또는 dev 서버로 실행)",
   "engines": {
     "node": ">=20"
   },

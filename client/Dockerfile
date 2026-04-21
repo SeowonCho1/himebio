@@ -1,3 +1,4 @@
+# Next.js standalone (App Router)
 FROM node:20-alpine AS builder
 WORKDIR /app
 
@@ -6,20 +7,29 @@ RUN npm ci
 
 COPY . .
 
-# Optional build-time envs for Vite
-ARG VITE_API_BASE
-ARG VITE_SITE_URL
-ENV VITE_API_BASE=${VITE_API_BASE}
-ENV VITE_SITE_URL=${VITE_SITE_URL}
+ARG NEXT_PUBLIC_API_BASE
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 
 RUN npm run build
 
-FROM nginx:1.27-alpine
-WORKDIR /usr/share/nginx/html
+FROM node:20-alpine AS runner
+WORKDIR /app
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist ./
+ENV NODE_ENV=production
+ENV PORT=5173
+ENV HOSTNAME=0.0.0.0
 
-EXPOSE 80
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 
-CMD ["nginx", "-g", "daemon off;"]
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 5173
+
+CMD ["node", "server.js"]

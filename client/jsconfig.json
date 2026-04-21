@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "jsx": "preserve",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "strict": false,
+    "noEmit": true,
+    "allowJs": true,
+    "skipLibCheck": true
+  },
+  "include": ["next-env.d.js", "**/*.js", "**/*.jsx"],
+  "exclude": ["node_modules"]
+}
