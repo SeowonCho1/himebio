@@ -139,11 +139,20 @@ function s3KeyPrefix() {
   return (process.env.S3_UPLOAD_PREFIX || "bio-trade").replace(/^\/+|\/+$/g, "");
 }
 
+function isDevelopmentMode() {
+  return process.env.NODE_ENV !== "production";
+}
+
 /**
  * 관리자 이미지 업로드. 우선순위: S3 → Cloudinary → 로컬(절대 URL)
  * @param {import("express").Request | undefined} req 로컬 저장 시 절대 URL 만들기용
  */
 export async function storeAdminUpload(buffer, mimetype, req) {
+  if (isDevelopmentMode()) {
+    const rel = await saveUploadedImageLocally(buffer, mimetype);
+    const base = requestBaseUrl(req);
+    return base ? `${base}${rel}` : rel;
+  }
   if (isS3Configured()) {
     const key = `${s3KeyPrefix()}/images/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${extFromImageMime(mimetype)}`;
     return uploadBufferToS3(buffer, key, mimetype || "image/jpeg");
@@ -161,6 +170,11 @@ export async function storeAdminUpload(buffer, mimetype, req) {
 export async function storeInquiryUpload(buffer, mimetype, req) {
   if (!INQUIRY_ALLOWED.has(mimetype)) {
     throw new Error("지원하지 않는 파일 형식입니다. (이미지, PDF)");
+  }
+  if (isDevelopmentMode()) {
+    const rel = await saveInquiryAttachmentLocally(buffer, mimetype);
+    const base = requestBaseUrl(req);
+    return base ? `${base}${rel}` : rel;
   }
   if (isS3Configured()) {
     let ext = ".bin";

@@ -588,7 +588,7 @@ function HeroCarousel({ slides }) {
     if (list.length <= 1) return undefined;
     const t = setInterval(() => {
       if (!isDraggingRef.current) setIdx((i) => (i + 1) % list.length);
-    }, 6000);
+    }, 4000);
     return () => clearInterval(t);
   }, [list.length]);
 
@@ -930,6 +930,8 @@ function ProductGrid({ items, columns = 4, variant = "default" }) {
 
 function PartnerLogoMarquee({ partners }) {
   const scrollerRef = useRef(null);
+  const trackRef = useRef(null);
+  const restartMarqueeRef = useRef(() => {});
   const isDownRef = useRef(false);
   const startXRef = useRef(0);
   const startScrollLeftRef = useRef(0);
@@ -939,26 +941,29 @@ function PartnerLogoMarquee({ partners }) {
   const normalized = useMemo(() => Array.from({ length: repeats }, () => baseItems).flat(), [baseItems, repeats]);
   const logoItems = useMemo(() => [...normalized, ...normalized], [normalized]);
 
-  if (!baseItems.length) {
-    return <div className="text-sm text-slate-500 py-6 text-center">등록된 파트너 로고가 없습니다.</div>;
-  }
-
   useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el || !logoItems.length) return undefined;
+    if (!logoItems.length) return undefined;
 
     let rafId = 0;
     let prevTs = 0;
+    let running = true;
 
-    // "90s 한 바퀴" 느낌으로 반쪽 트랙 길이에 맞춰 속도를 자동 계산
+    /** scrollWidth는 이미지 로드 전후로 달라짐 — tick/ResizeObserver에서 매번 읽음 */
     const tick = (ts) => {
+      if (!running) return;
+      const el = scrollerRef.current;
+      if (!el) {
+        rafId = window.requestAnimationFrame(tick);
+        return;
+      }
+
       if (!prevTs) prevTs = ts;
-      const dtSec = (ts - prevTs) / 1000;
+      const dtSec = Math.min(0.1, (ts - prevTs) / 1000);
       prevTs = ts;
 
       if (!isDownRef.current) {
         const half = el.scrollWidth / 2;
-        if (half > 0) {
+        if (half > 1 && el.scrollWidth > el.clientWidth + 1) {
           const speedPxPerSec = half / 90;
           el.scrollLeft += speedPxPerSec * dtSec;
           if (el.scrollLeft >= half) el.scrollLeft -= half;
@@ -968,9 +973,38 @@ function PartnerLogoMarquee({ partners }) {
       rafId = window.requestAnimationFrame(tick);
     };
 
-    rafId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(rafId);
+    let roResizeTimer = 0;
+    const start = () => {
+      prevTs = 0;
+      cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    restartMarqueeRef.current = start;
+
+    start();
+
+    const ro =
+      typeof ResizeObserver !== "undefined" && trackRef.current
+        ? new ResizeObserver(() => {
+            window.clearTimeout(roResizeTimer);
+            roResizeTimer = window.setTimeout(() => start(), 50);
+          })
+        : null;
+    if (ro && trackRef.current) ro.observe(trackRef.current);
+
+    return () => {
+      running = false;
+      restartMarqueeRef.current = () => {};
+      window.clearTimeout(roResizeTimer);
+      cancelAnimationFrame(rafId);
+      ro?.disconnect();
+    };
   }, [logoItems.length]);
+
+  if (!baseItems.length) {
+    return <div className="text-sm text-slate-500 py-6 text-center">등록된 파트너 로고가 없습니다.</div>;
+  }
 
   const onMouseDown = (e) => {
     const el = scrollerRef.current;
@@ -1022,7 +1056,7 @@ function PartnerLogoMarquee({ partners }) {
           el.scrollLeft = startScrollLeftRef.current - walk;
         }}
       >
-        <div className="partner-marquee-track">
+        <div ref={trackRef} className="partner-marquee-track">
           {logoItems.map((p, idx) => (
             <Link
               key={`${p._id || p.name}-${idx}`}
@@ -1030,7 +1064,15 @@ function PartnerLogoMarquee({ partners }) {
               className="partner-marquee-item"
               draggable={false}
             >
-              <img src={p.logoUrl} alt={p.name} className="max-h-full max-w-full object-contain" draggable={false} />
+              <img
+                src={p.logoUrl}
+                alt={p.name}
+                className="max-h-full max-w-full object-contain"
+                draggable={false}
+                loading="eager"
+                decoding="async"
+                onLoad={() => queueMicrotask(() => restartMarqueeRef.current())}
+              />
             </Link>
           ))}
         </div>
@@ -1194,16 +1236,27 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
         <div className="space-y-4">
           <form onSubmit={applySearch} className="flex w-full items-center justify-between gap-3">
             <p className="text-slate-600 text-sm shrink-0">전체 : {items.length}</p>
-            <div className="flex w-full max-w-[420px] items-center gap-2">
-              <input
-                className="h-10 w-full rounded-none border border-slate-300 px-3 text-sm"
-                placeholder="제품명 검색"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <button type="submit" className="h-10 shrink-0 px-4 border border-slate-300 bg-white text-slate-700 text-sm hover:text-red-600">
-                검색
-              </button>
+            <div className="w-full max-w-[420px]">
+              <label htmlFor={`product-search-${businessType}`} className="sr-only">
+                제품 검색
+              </label>
+              <div className="relative">
+                <input
+                  id={`product-search-${businessType}`}
+                  className="h-10 w-full rounded-none border border-slate-300 pl-3 pr-10 text-sm"
+                  placeholder="제품명 검색"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="absolute inset-y-0 right-0 px-3 inline-flex items-center text-slate-500 hover:text-slate-700 cursor-pointer"
+                  aria-label="검색"
+                  title="검색"
+                >
+                  <IconSearch className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </form>
           {loading ? <p className="text-slate-500 py-8">불러오는 중…</p> : <ProductGrid items={items} variant="catalog" />}

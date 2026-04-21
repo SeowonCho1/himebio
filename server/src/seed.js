@@ -276,15 +276,16 @@ async function run() {
     { key: SITE_SETTING_KEY },
     {
       $set: {
-        headerLogoUrl: "https://placehold.co/200x48?text=Header+Logo",
-        footerLogoUrl: "https://placehold.co/160x40?text=Footer+Logo",
-        companyName: "(주)바이오트레이드 샘플",
-        footerTopBar: "고객지원 · 견적문의 · 제휴문의",
-        copyrightText: "© 2026 Bio Trade Sample. All rights reserved.",
-        address: "서울특별시 강남구 테헤란로 000 (로컬 개발용)",
+        headerLogoUrl: "https://placehold.co/200x48?text=HIME+BioMed",
+        footerLogoUrl: "https://placehold.co/160x40?text=HIME+BioMed",
+        companyName: "하이미바이오메드",
+        footerTopBar: "제품문의 · 견적문의 · 고객지원",
+        copyrightText: "COPYRIGHT (c) 2026 하이미바이오메드. ALL RIGHTS RESERVED.",
+        address: "(07207) 서울시 영등포구 양평로 21길 26 (샘플 주소)",
         tel: "02-0000-0000",
         fax: "02-0000-0001",
-        email: "contact@example.com",
+        email: "info@himebiomed.example.com",
+        businessRegistrationNumber: "123-45-67890",
       },
     },
     { upsert: true, new: true }
