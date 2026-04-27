@@ -10,6 +10,7 @@ const siteSettingSchema = new mongoose.Schema(
     companyName: { type: String, default: "" },
     footerTopBar: { type: String, default: "" },
     copyrightText: { type: String, default: "" },
+    showFooterAddress: { type: Boolean, default: false },
     address: { type: String, default: "" },
     tel: { type: String, default: "" },
     fax: { type: String, default: "" },

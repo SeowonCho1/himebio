@@ -10,18 +10,20 @@ import multer from "multer";
 import { connectDb } from "./config/db.js";
 import publicRoutes from "./routes/public.js";
 import { authAdmin } from "./middleware/authAdmin.js";
-import { configureCloudinary, storeAdminUpload, storeInquiryUpload } from "./utils/upload.js";
+import { configureCloudinary, storeAdminUpload, storeDocumentUpload, storeInquiryUpload } from "./utils/upload.js";
 import { Admin } from "./models/Admin.js";
 import { Banner } from "./models/Banner.js";
 import { Popup } from "./models/Popup.js";
 import { Partner } from "./models/Partner.js";
 import { Product } from "./models/Product.js";
-import { ProductCategory, MAX_CATEGORY_LEVEL } from "./models/ProductCategory.js";
+import { ProductCategory, MAX_CATEGORY_LEVEL, ProductCategoryScope } from "./models/ProductCategory.js";
 import { Board, BoardDisplayType } from "./models/Board.js";
 import { BoardPost } from "./models/BoardPost.js";
 import { ensureBoardsAndMigrateFromLegacy } from "./migrateBoards.js";
 import { Inquiry, InquiryStatus } from "./models/Inquiry.js";
 import { SiteSetting, SITE_SETTING_KEY } from "./models/SiteSetting.js";
+import { SiteVisit } from "./models/SiteVisit.js";
+import { kstMonthStartYmd, kstYesterdayYmd, kstYmd } from "./utils/kstDay.js";
 
 dotenv.config();
 
@@ -49,6 +51,9 @@ const inquiryPublicUpload = multer({
     }
     cb(new Error("이미지 또는 PDF만 업로드할 수 있습니다."));
   },
+});
+const adminDocumentUpload = multer({
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
 configureCloudinary();
 
@@ -94,6 +99,8 @@ const INTEGER_FIELD_SPEC = {
   sortOrder: { fallback: 0 },
   level: { fallback: 1, min: 1, max: 4 },
   viewCount: { fallback: 0 },
+  widthPx: { fallback: 400, min: 200, max: 1200 },
+  heightPx: { fallback: 520, min: 200, max: 2000 },
 };
 
 function coerceIntegerFields(out) {
@@ -271,6 +278,39 @@ async function validateProductCategoryId(categoryId, label = "분류") {
   return categoryId;
 }
 
+function parseCategoryPath(raw) {
+  if (Array.isArray(raw)) return raw.map((x) => String(x || "").trim()).filter(Boolean);
+  const s = String(raw || "").trim();
+  if (!s) return [];
+  return s
+    .split(/[>/|\\]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function resolveCategoryIdByPath(pathInput) {
+  const names = parseCategoryPath(pathInput);
+  if (!names.length) return null;
+  let parentId = null;
+  for (const name of names) {
+    const node = await ProductCategory.findOne({ name, parentId }).select("_id").lean();
+    if (!node) return null;
+    parentId = node._id;
+  }
+  return parentId;
+}
+
+async function resolvePartnerId(raw) {
+  if (!raw) return null;
+  if (mongoose.isValidObjectId(raw)) return raw;
+  const name = String(raw || "").trim();
+  if (!name) return null;
+  const p = await Partner.findOne({ name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") })
+    .select("_id")
+    .lean();
+  return p?._id || null;
+}
+
 async function attachProductCategoryPath(doc) {
   if (!doc) return doc;
   const o = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
@@ -300,7 +340,22 @@ app.get("/api/admin/products", authAdmin, async (req, res) => {
   const skip = (page - 1) * limit;
   const filter = q
     ? {
-        $or: ["name", "productNumber", "shortDescription", "contentHtml", "description"].map((field) => ({
+        $or: [
+          "name",
+          "productNumber",
+          "shortDescription",
+          "contentHtml",
+          "description",
+          "featuresHtml",
+          "applicationHtml",
+          "componentsHtml",
+          "shippingStorageHtml",
+          "dataHtml",
+          "downloadHtml",
+          "downloadFileUrl",
+          "downloadFiles.fileName",
+          "downloadFiles.url",
+        ].map((field) => ({
           [field]: new RegExp(q, "i"),
         })),
       }
@@ -339,6 +394,75 @@ app.post("/api/admin/products", authAdmin, async (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message || "저장 실패" });
   }
+});
+
+/** 크롤링/외부 연동용 대량 업서트 */
+app.post("/api/admin/products/bulk-upsert", authAdmin, async (req, res) => {
+  const rows = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!rows.length) return res.status(400).json({ error: "items 배열이 필요합니다." });
+
+  const summary = { total: rows.length, created: 0, updated: 0, skipped: 0, failed: 0, results: [] };
+  for (let i = 0; i < rows.length; i += 1) {
+    const raw = rows[i] || {};
+    try {
+      const sourceSite = String(raw.sourceSite || "").trim();
+      const sourceProductId = String(raw.sourceProductId || "").trim();
+      const productNumber = String(raw.productNumber || "").trim();
+      const normalized = normalizeBody(raw);
+
+      const partnerId = await resolvePartnerId(raw.partnerId || raw.partnerName);
+      if (!partnerId) throw new Error("partnerId 또는 partnerName 매핑 실패");
+
+      let categoryId = null;
+      if (Object.prototype.hasOwnProperty.call(raw, "categoryId")) {
+        categoryId = await validateProductCategoryId(raw.categoryId, "분류");
+      } else if (Object.prototype.hasOwnProperty.call(raw, "categoryPath")) {
+        categoryId = await resolveCategoryIdByPath(raw.categoryPath);
+      }
+
+      let category2Id = null;
+      if (Object.prototype.hasOwnProperty.call(raw, "category2Id")) {
+        category2Id = await validateProductCategoryId(raw.category2Id, "분류2");
+      } else if (Object.prototype.hasOwnProperty.call(raw, "category2Path")) {
+        category2Id = await resolveCategoryIdByPath(raw.category2Path);
+      }
+
+      const payload = {
+        ...normalized,
+        partnerId,
+        categoryId,
+        category2Id,
+        sourceSite,
+        sourceProductId,
+      };
+      if (!payload.name || !String(payload.name).trim()) throw new Error("name은 필수입니다.");
+
+      let filter = null;
+      if (sourceSite && sourceProductId) filter = { sourceSite, sourceProductId };
+      else if (productNumber) filter = { productNumber, partnerId };
+      else {
+        summary.skipped += 1;
+        summary.results.push({ index: i, status: "skipped", reason: "sourceProductId/productNumber 식별키 없음" });
+        continue;
+      }
+
+      const existing = await Product.findOne(filter).select("_id").lean();
+      if (existing) {
+        await Product.findByIdAndUpdate(existing._id, payload, { new: false, runValidators: true });
+        summary.updated += 1;
+        summary.results.push({ index: i, status: "updated", id: String(existing._id) });
+      } else {
+        const created = await Product.create(payload);
+        summary.created += 1;
+        summary.results.push({ index: i, status: "created", id: String(created._id) });
+      }
+    } catch (e) {
+      summary.failed += 1;
+      summary.results.push({ index: i, status: "failed", reason: e.message || "unknown error" });
+    }
+  }
+
+  res.json(summary);
 });
 
 app.put("/api/admin/products/:id", authAdmin, async (req, res) => {
@@ -413,8 +537,50 @@ async function refreshCategorySubtreeLevels(rootId) {
   }
 }
 
-app.get("/api/admin/product-categories", authAdmin, async (_req, res) => {
-  const all = await ProductCategory.find().sort({ sortOrder: 1, name: 1 }).lean();
+const CATEGORY_SCOPE_VALUES = new Set(Object.values(ProductCategoryScope));
+
+function normalizeCategoryScope(raw, fallback = ProductCategoryScope.BOTH) {
+  const v = String(raw || "").trim().toUpperCase();
+  return CATEGORY_SCOPE_VALUES.has(v) ? v : fallback;
+}
+
+function categoryScopeFilter(scope, includeBoth = false) {
+  if (scope === "ALL") return {};
+  const allowed = includeBoth ? [scope, ProductCategoryScope.BOTH] : [scope];
+  return {
+    $or: [{ scope: { $in: allowed } }, { scope: { $exists: false } }, { scope: null }],
+  };
+}
+
+async function applyScopeToSubtree(rootId, scope) {
+  const targetScope = normalizeCategoryScope(scope);
+  const all = await ProductCategory.find().select("_id parentId scope");
+  const byParent = new Map();
+  for (const c of all) {
+    const key = c.parentId ? String(c.parentId) : "__root__";
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(c);
+  }
+  const stack = [String(rootId)];
+  const seen = new Set();
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur || seen.has(cur)) continue;
+    seen.add(cur);
+    const node = all.find((x) => String(x._id) === cur);
+    if (node) {
+      node.scope = targetScope;
+      await node.save();
+    }
+    for (const ch of byParent.get(cur) || []) stack.push(String(ch._id));
+  }
+}
+
+app.get("/api/admin/product-categories", authAdmin, async (req, res) => {
+  const scope = normalizeCategoryScope(req.query.scope, "ALL");
+  const includeBoth = String(req.query.includeBoth || "").trim().toLowerCase() === "true";
+  const filter = categoryScopeFilter(scope, includeBoth);
+  const all = await ProductCategory.find(filter).sort({ sortOrder: 1, name: 1 }).lean();
   res.json({ tree: buildCategoryTree(all), items: all });
 });
 
@@ -425,11 +591,14 @@ app.post("/api/admin/product-categories", authAdmin, async (req, res) => {
     if (!name) return res.status(400).json({ error: "이름은 필수입니다." });
     const parentId = body.parentId && mongoose.isValidObjectId(body.parentId) ? body.parentId : null;
     const level = await computeCategoryLevel(parentId);
+    const parent = parentId ? await ProductCategory.findById(parentId).select("scope") : null;
+    const scope = parent ? normalizeCategoryScope(parent.scope) : normalizeCategoryScope(body.scope);
     const doc = await ProductCategory.create({
       name,
       parentId,
       level,
       sortOrder: Number(body.sortOrder) || 0,
+      scope,
       isActive: body.isActive !== false && body.isActive !== "false",
     });
     res.status(201).json(doc);
@@ -447,6 +616,9 @@ app.put("/api/admin/product-categories/:id", authAdmin, async (req, res) => {
     if (body.name != null) node.name = String(body.name).trim() || node.name;
     if (body.sortOrder != null) node.sortOrder = Number(body.sortOrder) || 0;
     if (body.isActive != null) node.isActive = Boolean(body.isActive === true || body.isActive === "true");
+    if (Object.prototype.hasOwnProperty.call(body, "scope")) {
+      node.scope = normalizeCategoryScope(body.scope, node.scope);
+    }
 
     if (Object.prototype.hasOwnProperty.call(body, "parentId")) {
       const newParentRaw = body.parentId;
@@ -478,10 +650,15 @@ app.put("/api/admin/product-categories/:id", authAdmin, async (req, res) => {
         if (newMax > MAX_CATEGORY_LEVEL) return res.status(400).json({ error: "이동 시 분류가 4단계를 넘습니다." });
         node.parentId = newParentId;
         node.level = newLevel;
+        if (newParentId) {
+          const parent = await ProductCategory.findById(newParentId).select("scope");
+          if (parent) node.scope = normalizeCategoryScope(parent.scope, node.scope);
+        }
       }
     }
     await node.save();
     await refreshCategorySubtreeLevels(node._id);
+    await applyScopeToSubtree(node._id, node.scope);
     const fresh = await ProductCategory.findById(node._id);
     res.json(fresh);
   } catch (e) {
@@ -596,6 +773,29 @@ app.get("/api/admin/board-posts/:id", authAdmin, async (req, res) => {
   res.json(doc);
 });
 
+function normalizeBoardPostAttachments(raw) {
+  if (raw == null) return [];
+  let arr = raw;
+  if (typeof raw === "string") {
+    try {
+      arr = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const x of arr) {
+    const url = String(x?.url || "").trim();
+    if (!url) continue;
+    out.push({
+      fileName: String(x?.fileName || x?.name || "").trim(),
+      url,
+    });
+  }
+  return out;
+}
+
 function parseBoardPostUpdate(body) {
   const raw = normalizeBody(body || {});
   const out = {};
@@ -609,6 +809,7 @@ function parseBoardPostUpdate(body) {
     "isActive",
     "startAt",
     "endAt",
+    "forceEnded",
     "youtubeUrl",
   ];
   for (const k of keys) {
@@ -619,6 +820,9 @@ function parseBoardPostUpdate(body) {
       else if (typeof v === "string") v = new Date(v);
     }
     out[k] = v;
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, "attachments")) {
+    out.attachments = normalizeBoardPostAttachments(raw.attachments);
   }
   return out;
 }
@@ -642,7 +846,9 @@ app.post("/api/admin/board-posts", authAdmin, async (req, res) => {
       isActive: raw.isActive !== false && raw.isActive !== "false",
       startAt: raw.startAt && String(raw.startAt).trim() ? new Date(raw.startAt) : null,
       endAt: raw.endAt && String(raw.endAt).trim() ? new Date(raw.endAt) : null,
+      forceEnded: Boolean(raw.forceEnded === true || raw.forceEnded === "true"),
       youtubeUrl: String(raw.youtubeUrl || "").trim(),
+      attachments: normalizeBoardPostAttachments(raw.attachments),
     });
     res.status(201).json(doc);
   } catch (e) {
@@ -703,12 +909,23 @@ app.post("/api/admin/upload", authAdmin, upload.single("file"), async (req, res)
   }
 });
 
+app.post("/api/admin/upload-document", authAdmin, adminDocumentUpload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "file required" });
+  try {
+    const url = await storeDocumentUpload(req.file.buffer, req.file.mimetype, req.file.originalname, req);
+    res.json({ url });
+  } catch (e) {
+    res.status(500).json({ error: "upload failed", detail: e.message });
+  }
+});
+
 const SITE_SETTING_FIELDS = [
   "headerLogoUrl",
   "footerLogoUrl",
   "companyName",
   "footerTopBar",
   "copyrightText",
+  "showFooterAddress",
   "address",
   "tel",
   "fax",
@@ -770,6 +987,47 @@ app.delete("/api/admin/system-admins/:id", authAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/admin/analytics/summary", authAdmin, async (_req, res) => {
+  const todayKey = kstYmd();
+  const yesterdayKey = kstYesterdayYmd();
+  const monthStartKey = kstMonthStartYmd(todayKey);
+  const monthDayRange = { $gte: monthStartKey, $lte: todayKey };
+
+  const [
+    todayVisitors,
+    yesterdayVisitors,
+    thisMonthUniqueVisitors,
+    totalUniqueVisitors,
+    todayPvAgg,
+    monthPvAgg,
+    totalPvAgg,
+  ] = await Promise.all([
+    SiteVisit.countDocuments({ dayKey: todayKey }),
+    SiteVisit.countDocuments({ dayKey: yesterdayKey }),
+    SiteVisit.distinct("visitorId", { dayKey: monthDayRange }).then((ids) => ids.length),
+    SiteVisit.distinct("visitorId").then((ids) => ids.length),
+    SiteVisit.aggregate([{ $match: { dayKey: todayKey } }, { $group: { _id: null, s: { $sum: "$hits" } } }]),
+    SiteVisit.aggregate([{ $match: { dayKey: monthDayRange } }, { $group: { _id: null, s: { $sum: "$hits" } } }]),
+    SiteVisit.aggregate([{ $group: { _id: null, s: { $sum: "$hits" } } }]),
+  ]);
+  const todayPageViews = todayPvAgg[0]?.s ?? 0;
+  const thisMonthPageViews = monthPvAgg[0]?.s ?? 0;
+  const totalPageViews = totalPvAgg[0]?.s ?? 0;
+  res.json({
+    dayKeyKst: todayKey,
+    yesterdayKeyKst: yesterdayKey,
+    monthStartKeyKst: monthStartKey,
+    todayVisitors,
+    yesterdayVisitors,
+    thisMonthUniqueVisitors,
+    totalUniqueVisitors,
+    todayPageViews,
+    thisMonthPageViews,
+    totalPageViews,
+    generatedAt: new Date().toISOString(),
+  });
+});
+
 function resolveClientDistDir() {
   const candidates = [path.join(process.cwd(), "client", "dist"), path.join(process.cwd(), "..", "client", "dist")];
   for (const dir of candidates) {
@@ -812,6 +1070,7 @@ connectDb()
         companyName: "바이오시약(주)",
         footerTopBar: "제품문의 02-0000-0000 (본사) 042-000-0000 (지사)",
         copyrightText: "COPYRIGHT (c) 2026 바이오시약(주). ALL RIGHTS RESERVED.",
+        showFooterAddress: false,
         address: "(07207) 서울시 영등포구 양평로 21길 26 (주소 예시)",
         tel: "02-000-0000",
         fax: "02-000-0001",

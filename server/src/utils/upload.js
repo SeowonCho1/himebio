@@ -194,4 +194,36 @@ export async function storeInquiryUpload(buffer, mimetype, req) {
   return base ? `${base}${rel}` : rel;
 }
 
+/**
+ * 관리자 문서 업로드(다운로드 자료용). 우선순위: S3 -> 로컬
+ * @param {Buffer} buffer
+ * @param {string} mimetype
+ * @param {string} originalName
+ * @param {import("express").Request | undefined} req
+ */
+export async function storeDocumentUpload(buffer, mimetype, originalName, req) {
+  const rawExt = path.extname(String(originalName || "")).toLowerCase();
+  const safeExt = rawExt && rawExt.length <= 10 ? rawExt : ".bin";
+  if (isDevelopmentMode()) {
+    const name = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${safeExt}`;
+    const dir = path.join(process.cwd(), "uploads", "documents");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, name), buffer);
+    const rel = `/uploads/documents/${name}`;
+    const base = requestBaseUrl(req);
+    return base ? `${base}${rel}` : rel;
+  }
+  if (isS3Configured()) {
+    const key = `${s3KeyPrefix()}/documents/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${safeExt}`;
+    return uploadBufferToS3(buffer, key, mimetype || "application/octet-stream");
+  }
+  const name = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${safeExt}`;
+  const dir = path.join(process.cwd(), "uploads", "documents");
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, name), buffer);
+  const rel = `/uploads/documents/${name}`;
+  const base = requestBaseUrl(req);
+  return base ? `${base}${rel}` : rel;
+}
+
 export { isCloudinaryConfigured };

@@ -12,7 +12,18 @@ const boardPostSchema = new mongoose.Schema(
     viewCount: { type: Number, default: 0 },
     startAt: { type: Date, default: null },
     endAt: { type: Date, default: null },
+    forceEnded: { type: Boolean, default: false },
     youtubeUrl: { type: String, default: "" },
+    /** 관리자 업로드 문서 URL 목록 (공지 등 첨부 다운로드용) */
+    attachments: {
+      type: [
+        {
+          fileName: { type: String, default: "" },
+          url: { type: String, required: true, trim: true },
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );

@@ -9,21 +9,29 @@ export const metadata = {
   robots: "index,follow",
 };
 
+const kakaoMapKey = (process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY || "").trim();
+
 export default function RootLayout({ children }) {
   return (
     <html lang="ko">
       <head>
-        <link href="https://hangeul.pstatic.net/hangeul_static/css/nanum-gothic.css" rel="stylesheet" />
+        <link
+          rel="stylesheet"
+          type="text/css"
+          href="https://cdn.jsdelivr.net/gh/moonspam/NanumSquare@2.0/nanumsquare.css"
+        />
         <link rel="icon" type="image/png" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/favicon.png" />
       </head>
       <body className="min-h-screen flex flex-col">
         {children}
         <ScrollToTopButton />
-        <Script
-          src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=a52f604d33143e31be2db34b4d5b9cfd"
-          strategy="afterInteractive"
-        />
+        {kakaoMapKey ? (
+          <Script
+            src={`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(kakaoMapKey)}&autoload=false`}
+            strategy="afterInteractive"
+          />
+        ) : null}
       </body>
     </html>
   );

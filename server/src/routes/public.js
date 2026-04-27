@@ -1,10 +1,12 @@
 import { Router } from "express";
 import mongoose from "mongoose";
+import { SiteVisit } from "../models/SiteVisit.js";
+import { kstYmd } from "../utils/kstDay.js";
 import { Banner } from "../models/Banner.js";
 import { Popup } from "../models/Popup.js";
 import { Partner, PartnerType } from "../models/Partner.js";
 import { Product } from "../models/Product.js";
-import { ProductCategory } from "../models/ProductCategory.js";
+import { ProductCategory, ProductCategoryScope } from "../models/ProductCategory.js";
 import { Board } from "../models/Board.js";
 import { BoardPost } from "../models/BoardPost.js";
 import { Inquiry, HowHeard } from "../models/Inquiry.js";
@@ -39,7 +41,7 @@ router.get("/popups/active", async (_req, res) => {
     isActive: true,
     $and: [{ $or: [{ startAt: null }, { startAt: { $lte: now } }] }, { $or: [{ endAt: null }, { endAt: { $gte: now } }] }],
   })
-    .sort({ createdAt: -1 })
+    .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
   res.json(items);
 });
@@ -106,7 +108,18 @@ function collectDescendantCategoryIdsIncludingSelf(rootId, flatCategories) {
 }
 
 router.get("/product-categories", async (_req, res) => {
-  const all = await ProductCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean();
+  const scopeRaw = String(_req.query.scope || "").trim().toUpperCase();
+  const scopeFilter =
+    scopeRaw === ProductCategoryScope.PRODUCTS || scopeRaw === ProductCategoryScope.SYNTHESIS
+      ? {
+          $or: [
+            { scope: { $in: [scopeRaw, ProductCategoryScope.BOTH] } },
+            { scope: { $exists: false } },
+            { scope: null },
+          ],
+        }
+      : {};
+  const all = await ProductCategory.find({ isActive: true, ...scopeFilter }).sort({ sortOrder: 1, name: 1 }).lean();
   res.json({ tree: buildPublicCategoryTree(all) });
 });
 
@@ -165,13 +178,38 @@ async function listBoardPostsBySlug(req, res, slug) {
     const rx = new RegExp(String(search).trim(), "i");
     filter.$or = [{ title: rx }, { summary: rx }];
   }
+  const now = new Date();
+  const isEventBoard = slugNorm === "events";
+
   const [items, total] = await Promise.all([
-    BoardPost.find(filter)
-      .sort({ isImportant: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .select("-content")
-      .lean(),
+    isEventBoard
+      ? BoardPost.aggregate([
+          { $match: filter },
+          {
+            $addFields: {
+              endedRank: {
+                $cond: [
+                  {
+                    $or: [{ $eq: ["$forceEnded", true] }, { $and: [{ $ne: ["$endAt", null] }, { $lt: ["$endAt", now] }] }],
+                  },
+                  1,
+                  0,
+                ],
+              },
+              eventDateSort: { $ifNull: ["$startAt", "$createdAt"] },
+            },
+          },
+          { $sort: { endedRank: 1, eventDateSort: -1, createdAt: -1 } },
+          { $skip: skip },
+          { $limit: limit },
+          { $project: { content: 0, endedRank: 0, eventDateSort: 0 } },
+        ])
+      : BoardPost.find(filter)
+          .sort({ isImportant: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .select("-content")
+          .lean(),
     BoardPost.countDocuments(filter),
   ]);
   res.json({
@@ -283,6 +321,29 @@ router.post("/inquiries", async (req, res) => {
     console.error("[email] send failed", e);
   }
   res.status(201).json({ ok: true, id: inquiry._id });
+});
+
+/** 공개 사이트 방문 집계 (브라우저별 visitorId + KST 일자당 1행, hits 누적) */
+router.post("/visits", async (req, res) => {
+  const visitorId = String(req.body?.visitorId || "").trim();
+  if (!visitorId || visitorId.length > 80) return res.status(400).json({ error: "visitorId가 필요합니다." });
+  const path = String(req.body?.path || "/").trim().slice(0, 500) || "/";
+  const dayKey = kstYmd();
+  try {
+    await SiteVisit.updateOne(
+      { visitorId, dayKey },
+      {
+        $inc: { hits: 1 },
+        $set: { lastPath: path },
+        $setOnInsert: { visitorId, dayKey, firstPath: path },
+      },
+      { upsert: true }
+    );
+  } catch (e) {
+    console.error("[visits]", e);
+    return res.status(500).json({ error: "집계 저장에 실패했습니다." });
+  }
+  res.status(204).end();
 });
 
 export default router;

@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 /*
-  나눔고딕 (pstatic): 패밀리명이 굵기별로 분리되어 있음
-  - NanumGothicLight | NanumGothic | NanumGothicBold | NanumGothicExtraBold
+  나눔스퀘어 (jsDelivr moonspam/NanumSquare@2.0)
+  - 동일 패밀리명 "NanumSquare" + font-weight: 300 | 400 | 700 | 800
 */
 @theme {
-  --font-sans: "NanumGothic", "Malgun Gothic", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "NanumSquare", "Malgun Gothic", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
-  font-family: "NanumGothic", "Malgun Gothic", ui-sans-serif, system-ui, sans-serif;
+  font-family: "NanumSquare", "Malgun Gothic", ui-sans-serif, system-ui, sans-serif;
 }
 html { overflow-x: clip; min-height: 100%; }
 body { margin: 0; min-height: 100%; background: #f8fafc; color: #0f172a; display: flex; flex-direction: column; }
@@ -18,25 +18,26 @@ body > div { min-height: 100%; display: flex; flex-direction: column; flex: 1; }
 b,
 strong,
 th {
-  font-family: "NanumGothicBold", "NanumGothic", "Malgun Gothic", sans-serif;
-  font-weight: normal;
+  font-family: "NanumSquare", "Malgun Gothic", sans-serif;
+  font-weight: 700;
 }
 
 @layer utilities {
   .font-bold {
-    font-family: "NanumGothicBold", "NanumGothic", "Malgun Gothic", sans-serif;
-    font-weight: normal;
+    font-family: "NanumSquare", "Malgun Gothic", sans-serif;
+    font-weight: 700;
   }
   .font-extrabold {
-    font-family: "NanumGothicExtraBold", "NanumGothicBold", "NanumGothic", "Malgun Gothic", sans-serif;
-    font-weight: normal;
+    font-family: "NanumSquare", "Malgun Gothic", sans-serif;
+    font-weight: 800;
   }
   .font-black {
-    font-family: "NanumGothicExtraBold", "NanumGothicBold", "NanumGothic", "Malgun Gothic", sans-serif;
-    font-weight: normal;
+    font-family: "NanumSquare", "Malgun Gothic", sans-serif;
+    font-weight: 800;
   }
   .font-nanum-light {
-    font-family: "NanumGothicLight", "NanumGothic", "Malgun Gothic", sans-serif;
+    font-family: "NanumSquare", "Malgun Gothic", sans-serif;
+    font-weight: 300;
   }
 }
 a { color: inherit; text-decoration: none; }
@@ -127,4 +128,57 @@ a { color: inherit; text-decoration: none; }
     rgb(255 255 255 / 0.45) 55%,
     transparent 78%
   );
+}
+
+/* GNB 드롭다운 전체 — 배너 이미지 + 비네트(가독성) */
+.site-nav-dropdown-panel-bg {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: #c52525;
+  background-image:
+    linear-gradient(
+      115deg,
+      rgba(0, 0, 0, 0.22) 0%,
+      rgba(0, 0, 0, 0.05) 42%,
+      rgba(0, 0, 0, 0.14) 72%,
+      rgba(0, 0, 0, 0.26) 100%
+    ),
+    linear-gradient(180deg, rgba(197, 37, 37, 0.35) 0%, rgba(197, 37, 37, 0) 28%),
+    url("/patterns/nav-dropdown-title-bg.png");
+  background-size: auto, auto, cover;
+  background-position: 0 0, 0 0, var(--nav-dropdown-img-pos, 22% 44%);
+  background-repeat: no-repeat;
+}
+
+/* 인쇄: GNB·푸터·맨 위 버튼 등 제외, 본문(main)만 출력 */
+@media print {
+  .site-no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .site-shell {
+    display: block !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .site-shell > :not(main) {
+    display: none !important;
+  }
+
+  .site-shell > main {
+    display: block !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
+  }
+
+  @page {
+    margin: 12mm;
+  }
 }
