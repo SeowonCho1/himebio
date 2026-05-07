@@ -14,6 +14,7 @@ const boardPostSchema = new mongoose.Schema(
     endAt: { type: Date, default: null },
     forceEnded: { type: Boolean, default: false },
     youtubeUrl: { type: String, default: "" },
+    relatedProductId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", default: null },
     /** 관리자 업로드 문서 URL 목록 (공지 등 첨부 다운로드용) */
     attachments: {
       type: [

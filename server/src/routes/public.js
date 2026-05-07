@@ -237,7 +237,9 @@ async function getBoardPostBySlug(req, res, slug, idParam) {
     { _id: idParam, boardId: board._id, isActive: true },
     { $inc: { viewCount: 1 } },
     { new: true }
-  ).lean();
+  )
+    .populate("relatedProductId", "name productNumber thumbnailUrl imageUrl")
+    .lean();
   if (!doc) return res.status(404).json({ error: "Not found" });
   res.json(doc);
 }

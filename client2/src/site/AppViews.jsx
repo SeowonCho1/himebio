@@ -11,10 +11,20 @@ import { SitePopups } from "@/site/SitePopups";
 import { VisitBeacon } from "@/site/VisitBeacon";
 
 const ClientCkEditor = dynamic(() => import("@/components/ClientCkEditor"), { ssr: false });
-const SiteLangContext = createContext(SITE_LANG.KO);
+const SITE_SHELL_DEFAULT = {
+  siteLang: SITE_LANG.KO,
+  site: null,
+  footerMenuGroups: [],
+  shouldShowFooterAddress: false,
+};
+const SiteShellContext = createContext(SITE_SHELL_DEFAULT);
+
+/** 서브페이지 본문 가로 밴드 — `Layout`의 `<main>`에만 적용. 풀블리드 유지: 홈, 회사소개 */
+const SITE_SUBPAGE_MAIN_BAND =
+  "mx-auto box-border w-full max-w-full px-4 md:max-w-[70%]";
 
 function useSiteLang() {
-  return useContext(SiteLangContext);
+  return useContext(SiteShellContext).siteLang;
 }
 
 function createUploadAdapter(loader) {
@@ -69,8 +79,8 @@ const PRODUCT_DETAIL_INTRO_SIZE_CLASS = "text-[calc(0.875rem+5pt)]";
 const PRODUCT_DETAIL_BODY_CLASS =
   "text-sm text-slate-800 leading-7 [&_img]:max-w-full [&_img]:h-auto [&_img]:object-contain [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_thead]:bg-slate-100 [&_th]:border [&_th]:border-slate-300 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:px-3 [&_td]:py-2";
 
-/** 제품 상세 본문 가로 폭 — 배경은 100%, 이 클래스로 내용만 ~70% 중앙 */
-const PRODUCT_DETAIL_CONTENT_INNER = "mx-auto w-full max-w-full px-4 md:max-w-[70%]";
+/** 제품 상세 본문 가로 폭 — 배경은 100%, 이 클래스로 내용만 ~85% 중앙 */
+const PRODUCT_DETAIL_CONTENT_INNER = "mx-auto w-full max-w-full";
 
 /** 특징·확장 HTML 등 — 상세본문·주문·추천 제외 구역용 접기/펼치기 */
 function ProductDetailToggleSection({ title, children }) {
@@ -167,10 +177,43 @@ function IconBookSimple({ className = "w-8 h-8" }) {
   );
 }
 
-function IconMenu({ className = "w-6 h-6" }) {
+/** GNB 전체 메뉴 트리거 — 3×3 도트(가장자리 진색·중앙 브랜드 레드) */
+function IconBentoMenu({ className = "h-[26px] w-[26px]", variant = "onLight" }) {
+  const outer = variant === "onDark" ? "#ffffff" : "#111111";
+  const center = "#C52525";
+  const dots = [
+    [6, 6],
+    [12, 6],
+    [18, 6],
+    [6, 12],
+    [12, 12],
+    [18, 12],
+    [6, 18],
+    [12, 18],
+    [18, 18],
+  ];
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-      <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      {dots.map(([cx, cy], i) => (
+        <circle key={i} cx={cx} cy={cy} r={2.35} fill={i === 4 ? center : outer} />
+      ))}
+    </svg>
+  );
+}
+
+/** 전체 메뉴 닫기 — 십자(+) 배치의 흰 점 4개 */
+function IconCloseFourDots({ className = "h-6 w-6 text-white" }) {
+  const pts = [
+    [12, 4.5],
+    [19.5, 12],
+    [12, 19.5],
+    [4.5, 12],
+  ];
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      {pts.map(([cx, cy], i) => (
+        <circle key={i} cx={cx} cy={cy} r={2.6} fill="currentColor" />
+      ))}
     </svg>
   );
 }
@@ -197,26 +240,13 @@ const TOP_MENUS = [
   { key: "products", to: "/products", label: "제품소개", en: "PRODUCTS" },
   { key: "synthesis", to: "/synthesis", label: "합성서비스", en: "SYNTHESIS" },
   { key: "events", to: "/events", label: "이벤트", en: "EVENTS" },
-  { key: "references", to: "/references", label: "참고논문", en: "REFERENCES" },
+  { key: "references", to: "/references", label: "참고문헌", en: "REFERENCES" },
   { key: "support", to: "/notices", label: "고객지원", en: "CUSTOMER SUPPORT" },
 ];
 
-/**
- * 드롭다운 배너 `background-position` (PNG 레이어). `가로% 세로%` 두 값만 써도 됩니다.
- * 사진을 **위로** 당기려면 → **세로 숫자를 줄이세요** (예: 52 → 32, center 대신 35%).
- * 더 위에 붙이려면 `top` 쪽: `22% 18%` 처럼 세로를 20% 전후까지 내려보면 됩니다.
- */
-const DROPDOWN_PANEL_BG_IMAGE_POS = {
-  partners: "10% 42%",
-  products: "50% 50%",
-  synthesis: "30% 30%",
-  events: "24% 52%",
-  references: "32% 30%",
-  support: "14% 48%",
-};
-
-/** GNB 드롭다운 패널 최소 높이(px). 항목이 적을 때도 본문 헤더가 비치지 않도록 여유 확보 */
-const MEGA_MENU_PANEL_MIN_HEIGHT_PX = 300;
+/** GNB 드롭다운 패널 최소 높이(px). 메뉴 타입별로 동적 적용 */
+const MEGA_MENU_PANEL_MIN_HEIGHT_PX = 88;
+const MEGA_MENU_PANEL_PRODUCTS_MIN_HEIGHT_PX = 220;
 
 /** 공식제조사·제품·합성서비스 등에서 제조사(파트너) 이름 표기 */
 const PARTNER_NAME_EMPHASIS = "font-bold text-[#0f2744]";
@@ -297,6 +327,122 @@ function MobileCategoryLinks({ nodes, closeMenus, depth = 0 }) {
   ));
 }
 
+function SiteFooter({ site, footerMenuGroups, shouldShowFooterAddress, rootClassName }) {
+  return (
+    <footer className={rootClassName}>
+      <div className="bg-[#1f2227]">
+        <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8 space-y-6">
+          <div className="pb-6 border-b border-slate-700">
+            <div className="mt-6">
+              {site?.footerLogoUrl ? (
+                <img src={site.footerLogoUrl} alt="" className="max-w-[200px] h-auto object-contain" />
+              ) : (
+                <div className="h-14 w-40 bg-[#1f2227] border border-slate-700" />
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,320px)] items-start pb-6 border-b border-slate-700">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+              {footerMenuGroups.map((group) => (
+                <div key={group.title}>
+                  <p className="text-sm font-semibold text-slate-100 mb-2">{group.title}</p>
+                  <ul className="space-y-1">
+                    {group.items.map((item) => (
+                      <li key={`${group.title}-${item.to}`}>
+                        <Link href={item.to} className="text-sm !text-[#dbe4f2] hover:!text-white">
+                          {item.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="text-sm text-slate-400 space-y-2 leading-relaxed">
+              {shouldShowFooterAddress ? <p>{site.address}</p> : null}
+              <p>
+                {site?.tel ? <span>TEL {site.tel}</span> : null}
+                {site?.tel && site?.fax ? <span className="mx-1">|</span> : null}
+                {site?.fax ? <span>FAX {site.fax}</span> : null}
+                {(site?.tel || site?.fax) && site?.email ? <span className="mx-1">|</span> : null}
+                {site?.email ? (
+                  <span>
+                    이메일{" "}
+                    <a href={`mailto:${site.email}`} className="text-slate-200 underline">
+                      {site.email}
+                    </a>
+                  </span>
+                ) : null}
+              </p>
+              {site?.businessRegistrationNumber ? <p>사업자등록번호 {site.businessRegistrationNumber}</p> : null}
+            </div>
+          </div>
+
+          <div className="text-center space-y-2 pb-2 md:pb-3">
+            <div className="flex flex-wrap justify-center gap-2">
+              {site?.termsUrl ? (
+                <a
+                  href={site.termsUrl}
+                  className="inline-block px-3 py-1.5 text-xs font-bold border border-slate-500 bg-[#242831] !text-white transition-colors hover:bg-[#3a465a] hover:border-[#dbe4f2] hover:!text-white"
+                >
+                  {site.termsTitle || "이용약관"}
+                </a>
+              ) : null}
+              {site?.privacyUrl ? (
+                <a
+                  href={site.privacyUrl}
+                  className="inline-block px-3 py-1.5 text-xs font-bold border border-slate-500 bg-[#242831] !text-white transition-colors hover:bg-[#3a465a] hover:border-[#dbe4f2] hover:!text-white"
+                >
+                  {site.privacyTitle || "개인정보취급방침"}
+                </a>
+              ) : null}
+            </div>
+            {site?.copyrightText ? (
+              <p className="text-xs text-slate-500">{site.copyrightText}</p>
+            ) : (
+              <p className="text-xs text-slate-600">저작권 문구를 관리자에서 설정해 주세요.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function FloatingQuickMenu({ siteLang }) {
+  const links = [
+    { href: "/inquiry", label: tSite(siteLang, "quoteInquiry", "견적문의"), icon: "📝" },
+    { href: "/events", label: pickKoEn(siteLang, "이벤트", "Events"), icon: "🎉" },
+    { href: "/notices", label: pickKoEn(siteLang, "공지사항", "Notices"), icon: "📢" },
+  ];
+  return (
+    <aside
+      className="fixed right-4 top-1/2 z-[95] hidden -translate-y-1/2 md:block"
+      aria-label={pickKoEn(siteLang, "빠른 메뉴", "Quick menu")}
+    >
+      <div className="w-[74px] rounded-[999px] border border-white/70 bg-white/78 px-1.5 py-3 backdrop-blur-[2px] shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+        <nav className="flex flex-col">
+          {links.map((item, idx) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`group flex min-h-[74px] flex-col items-center justify-center gap-1 text-center text-slate-800 transition-colors hover:text-[#C52525] ${
+                idx > 0 ? "border-t border-slate-300/65" : ""
+              }`}
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[15px] transition-colors group-hover:bg-[#ffe9ec]">
+                {item.icon}
+              </span>
+              <span className="text-xs font-semibold leading-tight tracking-[-0.01em]">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+      </div>
+    </aside>
+  );
+}
+
 function Layout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -305,10 +451,15 @@ function Layout({ children }) {
     pathname === "/" ||
     pathname.startsWith("/products/") ||
     pathname.startsWith("/synthesis/");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const isHome = pathname === "/";
+  const mainUsesContentBand = !isHome && pathname !== "/customer/about";
+  const [fullMenuOpen, setFullMenuOpen] = useState(false);
+  const [fullMenuMounted, setFullMenuMounted] = useState(false);
+  const [fullMenuClosing, setFullMenuClosing] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState("");
   const [panelMenuKey, setPanelMenuKey] = useState("");
   const [panelVisible, setPanelVisible] = useState(false);
+  const [dropdownAnchorLeft, setDropdownAnchorLeft] = useState(0);
   const [headerSearch, setHeaderSearch] = useState("");
   const [site, setSite] = useState(null);
   const [siteLang, setSiteLang] = useState(SITE_LANG.KO);
@@ -318,19 +469,40 @@ function Layout({ children }) {
   const [panelScrollable, setPanelScrollable] = useState(false);
   const dropdownPanelRef = useRef(null);
   const dropdownInnerRef = useRef(null);
+  const topNavRef = useRef(null);
   const langMenuRef = useRef(null);
 
   const submitHeaderSearch = (e) => {
     e.preventDefault();
     const q = headerSearch.trim();
     router.push(q ? `/products?search=${encodeURIComponent(q)}&scope=catalog` : "/products");
-    setMenuOpen(false);
     setActiveDropdown("");
   };
 
+  const openFullMenu = () => {
+    setFullMenuClosing(false);
+    setFullMenuMounted(true);
+    setFullMenuOpen(true);
+  };
+
+  const closeFullMenu = (immediate = false) => {
+    if (immediate) {
+      setFullMenuClosing(false);
+      setFullMenuOpen(false);
+      setFullMenuMounted(false);
+      return;
+    }
+    setFullMenuClosing(true);
+    setFullMenuOpen(false);
+    window.setTimeout(() => {
+      setFullMenuClosing(false);
+      setFullMenuMounted(false);
+    }, 340);
+  };
+
   const closeMenus = () => {
-    setMenuOpen(false);
     setActiveDropdown("");
+    closeFullMenu();
   };
 
   useEffect(() => {
@@ -353,9 +525,30 @@ function Layout({ children }) {
 
   useEffect(() => {
     setActiveDropdown("");
-    setMenuOpen(false);
+    closeFullMenu(true);
     setLangMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!fullMenuMounted) return undefined;
+    const onEsc = (e) => {
+      if (e.key === "Escape") closeFullMenu();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [fullMenuMounted]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    if (fullMenuMounted) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+    return undefined;
+  }, [fullMenuMounted]);
 
   useEffect(() => {
     if (!langMenuOpen) return undefined;
@@ -384,9 +577,31 @@ function Layout({ children }) {
     return () => clearTimeout(t);
   }, [activeDropdown]);
 
+  const homeHeroHeaderMode = isHome && !panelVisible && !fullMenuOpen && !langMenuOpen;
+  const allowHeaderDropdown = !isHome;
+  const showFloatingQuickMenu = !isHome && !pathname.startsWith("/admin");
+  const openHeaderDropdown = useCallback(
+    (menuKey, event) => {
+      if (!allowHeaderDropdown) return;
+      setActiveDropdown(menuKey);
+      const navRect = topNavRef.current?.getBoundingClientRect?.();
+      const itemRect = event?.currentTarget?.getBoundingClientRect?.();
+      if (navRect && itemRect) {
+        const nextLeft = Math.max(0, itemRect.left - navRect.left - 96);
+        setDropdownAnchorLeft(nextLeft);
+      }
+    },
+    [allowHeaderDropdown]
+  );
   const navLinkClass = ({ isActive }) =>
-    `whitespace-nowrap pb-1 border-b-2 transition-colors ${
-      isActive ? "border-[#C52525] text-[#C52525] font-semibold" : "border-transparent text-slate-700 hover:text-[#C52525] hover:border-[#C52525]/50"
+    `whitespace-nowrap text-[19px] md:text-[24px] font-extrabold tracking-[-0.01em] transition-colors ${
+      homeHeroHeaderMode
+        ? isActive
+          ? "text-white"
+          : "text-white/88 hover:text-white"
+        : isActive
+        ? "text-[#C52525]"
+        : "text-slate-800 hover:text-[#C52525]"
     }`;
 
   const localizedTopMenus = useMemo(
@@ -399,15 +614,33 @@ function Layout({ children }) {
   );
   const activeMenu = localizedTopMenus.find((m) => m.key === panelMenuKey) || null;
   const shouldShowFooterAddress = Boolean(site?.showFooterAddress === true && String(site?.address || "").trim());
-  const visibleCustomerSupportSub = shouldShowFooterAddress
-    ? localizedSupportMenus
-    : localizedSupportMenus.filter((x) => x.to !== "/customer/directions");
-  const footerMenuGroups = buildFooterMenuGroups(visibleCustomerSupportSub, siteLang);
+  const visibleCustomerSupportSub = useMemo(
+    () =>
+      shouldShowFooterAddress
+        ? localizedSupportMenus
+        : localizedSupportMenus.filter((x) => x.to !== "/customer/directions"),
+    [shouldShowFooterAddress, localizedSupportMenus]
+  );
+  const footerMenuGroups = useMemo(
+    () => buildFooterMenuGroups(visibleCustomerSupportSub, siteLang),
+    [visibleCustomerSupportSub, siteLang]
+  );
+  const siteShellValue = useMemo(
+    () => ({
+      siteLang,
+      site,
+      footerMenuGroups,
+      shouldShowFooterAddress,
+    }),
+    [siteLang, site, footerMenuGroups, shouldShowFooterAddress]
+  );
   const activeItems = getDropdownItemsByMenu(panelMenuKey, categoryTree, visibleCustomerSupportSub, siteLang);
   const megaMenuLinkTextClass =
     panelMenuKey === "products"
       ? productMegaMenuLinkTextClass(activeItems)
       : "text-[17px] md:text-[24px] leading-snug";
+  const isProductsDropdown = panelMenuKey === "products";
+  const panelMinHeightPx = panelMenuKey === "products" ? MEGA_MENU_PANEL_PRODUCTS_MIN_HEIGHT_PX : MEGA_MENU_PANEL_MIN_HEIGHT_PX;
 
   const measureDropdownPanel = useCallback(() => {
     const outer = dropdownPanelRef.current;
@@ -415,7 +648,7 @@ function Layout({ children }) {
     if (!el) return;
     /** 이전에 연 '긴' 메뉴 높이가 남아 있으면 flex 자식 scrollHeight가 그만큼 커지는 문제 → 측정 전 패널을 최소 높이로 잠깐 고정 */
     if (outer) {
-      outer.style.height = `${MEGA_MENU_PANEL_MIN_HEIGHT_PX}px`;
+      outer.style.height = `${panelMinHeightPx}px`;
       void outer.offsetHeight;
     }
     const contentHeight = el.scrollHeight || 0;
@@ -423,15 +656,15 @@ function Layout({ children }) {
       outer.style.height = "";
     }
     if (typeof window === "undefined") {
-      setPanelHeight(Math.max(MEGA_MENU_PANEL_MIN_HEIGHT_PX, contentHeight));
+      setPanelHeight(Math.max(panelMinHeightPx, contentHeight));
       setPanelScrollable(false);
       return;
     }
-    const viewportAvailable = Math.max(MEGA_MENU_PANEL_MIN_HEIGHT_PX, window.innerHeight - 140);
-    const nextHeight = Math.max(MEGA_MENU_PANEL_MIN_HEIGHT_PX, Math.min(contentHeight, viewportAvailable));
+    const viewportAvailable = Math.max(panelMinHeightPx, window.innerHeight - 140);
+    const nextHeight = Math.max(panelMinHeightPx, Math.min(contentHeight, viewportAvailable));
     setPanelHeight(nextHeight);
     setPanelScrollable(contentHeight > viewportAvailable);
-  }, []);
+  }, [panelMinHeightPx]);
 
   useLayoutEffect(() => {
     measureDropdownPanel();
@@ -456,121 +689,75 @@ function Layout({ children }) {
   }, [panelVisible, panelMenuKey, measureDropdownPanel]);
 
   return (
-    <SiteLangContext.Provider value={siteLang}>
-      <div className="site-shell flex min-h-screen grow flex-col overflow-x-clip bg-white">
-      <header className="sticky top-0 z-[100] shrink-0 bg-[#f5f6f8] text-slate-900 shadow-sm border-b border-slate-200">
-        <div
-          className={`container mx-auto max-w-full md:max-w-[85%] px-4 flex flex-col py-3 md:py-4 ${
-            menuOpen ? "min-h-[124px] h-auto justify-start gap-2 md:h-[124px] md:justify-center md:gap-2" : "h-[124px] justify-center gap-2"
-          }`}
-        >
-          <div className="flex items-center gap-3 md:gap-4 shrink-0">
+    <SiteShellContext.Provider value={siteShellValue}>
+      <div className="site-shell flex flex-col overflow-x-clip bg-white">
+      <header
+        className={`top-0 z-[100] shrink-0 transition-colors ${isHome ? "border-b-0" : "border-b border-slate-200/90"} ${
+          homeHeroHeaderMode
+            ? "absolute left-0 right-0 bg-transparent text-white"
+            : "sticky bg-white text-slate-900"
+        }`}
+      >
+        <div className="mx-auto flex w-full max-w-full flex-col px-4 md:max-w-[70%]">
+          <div className="flex h-[92px] w-full shrink-0 items-center">
+          <div className="grid w-full shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 md:gap-6">
             <Link href="/" className="shrink-0 flex items-center" title="홈" onClick={closeMenus}>
               <img
                 src={site?.headerLogoUrl || "/logo.svg"}
                 alt=""
-                className="h-14 md:h-16 w-auto max-h-[72px] object-contain"
+                className={`h-11 md:h-12 w-auto object-contain ${homeHeroHeaderMode ? "drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]" : ""}`}
               />
             </Link>
 
-            <form onSubmit={submitHeaderSearch} className="flex-1 min-w-0">
-              <div className="relative">
-                <input
-                  className="w-full rounded-md bg-white text-slate-900 pl-4 pr-11 py-3 text-sm placeholder:text-slate-400 border border-slate-200 shadow-[inset_0_1px_1px_rgba(15,23,42,0.05),0_1px_6px_rgba(15,23,42,0.04)] focus:outline-none focus:ring-2 focus:ring-[#C52525]/20 focus:border-[#C52525]/40"
-                  placeholder={tSite(siteLang, "searchPlaceholder", "찾으시는 제품을 입력해 주세요.")}
-                  value={headerSearch}
-                  onChange={(e) => setHeaderSearch(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-600 hover:text-slate-900 cursor-pointer"
-                  aria-label={tSite(siteLang, "searchAria", "검색")}
+            <nav ref={topNavRef} className="hidden md:flex w-full items-center justify-evenly px-3 lg:px-4">
+              {localizedTopMenus.map((m) => (
+                <NavLink
+                  key={`top-inline-${m.key}`}
+                  href={m.to}
+                  end={m.key === "products"}
+                  className={navLinkClass}
+                  onMouseEnter={(e) => openHeaderDropdown(m.key, e)}
+                  onFocus={(e) => openHeaderDropdown(m.key, e)}
+                  onClick={closeMenus}
                 >
-                  <IconSearch />
-                </button>
-              </div>
-            </form>
+                  {m.label}
+                </NavLink>
+              ))}
+            </nav>
 
-            <div className="flex items-center gap-1 shrink-0">
-              <Link
-                href="/inquiry"
-                className="inline-flex h-10 items-center gap-2 rounded-md px-2 hover:bg-slate-200"
-                title={tSite(siteLang, "quoteInquiry", "견적문의")}
-                onClick={closeMenus}
-              >
-                <span className="inline-flex items-center text-slate-400">
-                  <IconInquiry className="w-7 h-7" />
-                </span>
-                <span className="hidden sm:block leading-tight">
-                  <span className="block text-[22px] md:text-[24px] text-[#C52525] font-extrabold tracking-[-0.01em]">
-                    {tSite(siteLang, "quoteInquiry", "견적문의")}
-                  </span>
-                </span>
-              </Link>
-              <div ref={langMenuRef} className="relative hidden md:block">
-                <button
-                  type="button"
-                  onClick={() => setLangMenuOpen((v) => !v)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-700 hover:bg-slate-200"
-                  aria-haspopup="menu"
-                  aria-expanded={langMenuOpen}
-                  aria-label="언어 선택"
-                >
-                  <img
-                    src={siteLang === SITE_LANG.EN ? "/icons8-USA.png" : "/icons8-korea.png"}
-                    alt={siteLang === SITE_LANG.EN ? "English" : "한국어"}
-                    className="h-[18px] w-auto object-contain"
-                  />
-                </button>
-                {langMenuOpen ? (
-                  <div className="absolute right-0 top-full z-[140] mt-1 w-[160px] overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg" role="menu">
-                    <button
-                      type="button"
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-base ${
-                        siteLang === SITE_LANG.KO ? "bg-slate-100 text-slate-900" : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                      onClick={() => {
-                        setSiteLang(SITE_LANG.KO);
-                        setStoredSiteLang(SITE_LANG.KO);
-                        setLangMenuOpen(false);
-                      }}
-                      role="menuitem"
-                    >
-                      <img src="/icons8-korea.png" alt="" aria-hidden className="h-4 w-auto object-contain" />
-                      <span>{tSite(siteLang, "langKo", "한국어")}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-base ${
-                        siteLang === SITE_LANG.EN ? "bg-slate-100 text-slate-900" : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                      onClick={() => {
-                        setSiteLang(SITE_LANG.EN);
-                        setStoredSiteLang(SITE_LANG.EN);
-                        setLangMenuOpen(false);
-                      }}
-                      role="menuitem"
-                    >
-                      <img src="/icons8-USA.png" alt="" aria-hidden className="h-4 w-auto object-contain" />
-                      <span>{tSite(siteLang, "langEn", "English")}</span>
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+            <div className="flex items-center justify-end gap-4 md:gap-5 shrink-0">
               <button
                 type="button"
-                onClick={() => setMenuOpen((v) => !v)}
-                className="h-11 w-11 md:hidden inline-flex items-center justify-center rounded-md hover:bg-slate-200"
-                title={tSite(siteLang, "menu", "메뉴")}
-                aria-expanded={menuOpen}
+                onClick={() => {
+                  setHeaderSearch("");
+                  router.push("/products");
+                }}
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${homeHeroHeaderMode ? "text-white hover:bg-white/10" : "text-slate-700 hover:bg-slate-200"}`}
+                aria-label={tSite(siteLang, "searchAria", "검색")}
+                title={tSite(siteLang, "searchAria", "검색")}
               >
-                <IconMenu />
+                <IconSearch className="h-4.5 w-4.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLangMenuOpen(false);
+                  openFullMenu();
+                }}
+                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                  homeHeroHeaderMode ? "hover:bg-white/10" : "hover:bg-slate-200"
+                }`}
+                aria-label={tSite(siteLang, "fullMenuOpen", "전체 메뉴 열기")}
+                title={tSite(siteLang, "fullMenuOpen", "전체 메뉴")}
+              >
+                <IconBentoMenu variant={homeHeroHeaderMode ? "onDark" : "onLight"} />
               </button>
             </div>
           </div>
+          </div>
 
-          <div className="relative hidden md:block shrink-0 md:mt-1" onMouseLeave={() => setActiveDropdown("")}>
-            <nav className="flex w-full flex-wrap items-center justify-between gap-y-1 text-base lg:text-[17px] font-semibold">
+          <div className="relative w-full" onMouseLeave={() => allowHeaderDropdown && setActiveDropdown("")}>
+            <nav className="hidden w-full flex-wrap items-center justify-between gap-y-1 text-base lg:text-[17px] font-semibold">
               {localizedTopMenus.map((m) => (
                 <NavLink
                   key={m.key}
@@ -586,17 +773,17 @@ function Layout({ children }) {
               ))}
             </nav>
 
-            {activeMenu ? (
+            {allowHeaderDropdown && activeMenu ? (
               <div
                 ref={dropdownPanelRef}
-                className={`absolute left-1/2 top-full z-[120] flex min-h-0 w-screen max-w-none -translate-x-1/2 flex-col ${
+                className={`absolute left-1/2 top-0 z-[120] flex min-h-0 w-screen max-w-none -translate-x-1/2 flex-col border-t border-slate-200/90 ${
                   panelScrollable ? "overflow-x-hidden overflow-y-auto" : "overflow-hidden"
-                } bg-[#C52525] text-left text-white shadow-lg transition-[height,opacity,transform] duration-300 ease-out ${
+                } bg-[#F5F5F5] text-left text-slate-800 shadow-lg transition-[height,opacity,transform] duration-300 ease-out ${
                   panelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
                 }`}
                 style={{
-                  height: panelVisible ? Math.max(MEGA_MENU_PANEL_MIN_HEIGHT_PX, panelHeight) : 0,
-                  minHeight: panelVisible ? MEGA_MENU_PANEL_MIN_HEIGHT_PX : undefined,
+                  height: panelVisible ? Math.max(panelMinHeightPx, panelHeight) : 0,
+                  minHeight: panelVisible ? panelMinHeightPx : undefined,
                 }}
                 role="navigation"
                 aria-label={`${activeMenu.label} submenu`}
@@ -605,54 +792,32 @@ function Layout({ children }) {
                 }}
               >
                 <div
-                  className="site-nav-dropdown-panel-bg"
-                  aria-hidden
-                  style={{
-                    "--nav-dropdown-img-pos": DROPDOWN_PANEL_BG_IMAGE_POS[panelMenuKey] ?? "22% 44%",
-                  }}
-                />
-                <div
                   ref={dropdownInnerRef}
-                  className={`relative z-10 flex min-h-0 flex-1 flex-col container mx-auto box-border w-full max-w-full px-4 md:max-w-[85%] ${
-                    panelMenuKey === "products" ? "py-6 md:py-9" : "py-5 md:py-6"
+                  className={`relative z-10 mx-auto box-border flex min-h-0 w-full max-w-full flex-1 flex-col px-4 md:max-w-[85%] ${
+                    isProductsDropdown ? "py-4 md:py-5" : "py-0"
                   }`}
                 >
-                  <div className="mx-auto grid min-h-0 w-full max-w-[960px] flex-1 grid-cols-[minmax(200px,220px)_minmax(0,1fr)] grid-rows-[1fr] items-stretch gap-x-6 md:gap-x-8">
-                    <div className="flex h-full min-h-0 min-w-0 flex-col justify-center self-stretch py-1 pr-0 md:py-2 md:pr-2">
-                      <div className="relative z-[1] flex flex-col py-1 md:py-2">
-                        <h3 className="text-3xl md:text-[36px] font-bold text-white leading-tight [text-shadow:0_2px_14px_rgba(0,0,0,0.45)]">
-                          {activeMenu.label}
-                        </h3>
-                        <p className="text-white/95 font-semibold tracking-wide mt-2 text-xs md:text-sm [text-shadow:0_1px_10px_rgba(0,0,0,0.4)]">
-                          {activeMenu.en}
-                        </p>
-                      </div>
-                    </div>
+                  <div className={`grid min-h-0 w-full flex-1 grid-cols-1 ${isProductsDropdown ? "items-start" : "items-center"}`}>
                     {activeItems.length > 0 ? (
                       <div
-                        className={`flex h-full min-h-0 min-w-0 flex-col self-stretch border-l border-white/25 pl-5 md:pl-8 ${
-                          panelMenuKey === "products" && activeItems.length > 8
-                            ? "justify-start py-1 md:py-2"
-                            : "justify-center py-2"
+                        className={`flex min-h-0 min-w-0 flex-col self-stretch py-0.5 md:py-1 ${
+                          isProductsDropdown ? "justify-center" : "justify-center md:items-start"
                         }`}
                       >
                         <ul
-                          className={`mx-auto grid w-full grid-cols-1 text-left ${
-                            panelMenuKey === "products" ? "gap-y-1.5 md:gap-y-2" : "gap-y-1"
-                          } ${
-                            panelMenuKey === "products"
-                              ? activeItems.length > 14
-                                ? "max-w-[min(100%,520px)]"
-                                : "max-w-[min(100%,400px)]"
-                              : "max-w-[340px]"
-                          }`}
+                          className={
+                            isProductsDropdown
+                              ? "grid w-full grid-cols-1 gap-x-8 gap-y-1.5 text-left sm:grid-cols-2 lg:grid-cols-3"
+                              : "inline-flex w-auto max-w-none flex-nowrap items-baseline gap-x-8 text-left whitespace-nowrap"
+                          }
+                          style={isProductsDropdown ? undefined : { paddingLeft: `${dropdownAnchorLeft}px` }}
                         >
                           {activeItems.map((item) => (
-                            <li key={`${activeMenu.key}-${item.to}-${item.label}`} className="w-full">
+                            <li key={`${activeMenu.key}-${item.to}-${item.label}`} className={isProductsDropdown ? "w-full min-w-0" : "w-auto shrink-0"}>
                               <Link
                                 href={item.to}
-                                className={`block w-full -mx-1 px-3 text-white ${megaMenuLinkTextClass} [text-shadow:0_1px_8px_rgba(0,0,0,0.35)] transition-[font-weight,text-shadow,color] duration-150 hover:font-extrabold hover:[text-shadow:0_2px_10px_rgba(0,0,0,0.5)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-white/70 ${
-                                  panelMenuKey === "products" ? "py-2 md:py-2.5" : "py-1.5"
+                                className={`-mx-1 block px-3 py-1.5 text-slate-700 ${megaMenuLinkTextClass} transition-colors duration-150 hover:font-semibold hover:text-[#C52525] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[#C52525]/40 ${
+                                  isProductsDropdown ? "truncate md:py-2" : "whitespace-nowrap"
                                 }`}
                                 onClick={closeMenus}
                               >
@@ -663,8 +828,8 @@ function Layout({ children }) {
                         </ul>
                       </div>
                     ) : (
-                      <div className="flex h-full min-h-0 min-w-0 flex-col justify-center self-stretch border-l border-white/25 py-2 pl-5 md:pl-8">
-                        <div className="mx-auto w-full max-w-[340px] text-left text-sm text-white/80">
+                      <div className="flex min-h-0 min-w-0 flex-col justify-start self-stretch py-2">
+                        <div className="w-full max-w-md text-left text-sm text-slate-500">
                           {tSite(siteLang, "noSubmenu", "표시할 하위 메뉴가 없습니다.")}
                         </div>
                       </div>
@@ -675,112 +840,155 @@ function Layout({ children }) {
             ) : null}
           </div>
 
-          {menuOpen ? (
-            <nav className="md:hidden shrink-0 border-t border-slate-300 pt-3 pb-1 max-h-[min(60vh,420px)] overflow-y-auto text-sm">
-              <div className="flex flex-col gap-3">
-                {localizedTopMenus.map((m) => (
-                  <NavLink key={m.key} href={m.to} end={m.key === "products"} className={navLinkClass} onClick={closeMenus}>
-                    {m.label}
-                  </NavLink>
-                ))}
-              </div>
-            </nav>
-          ) : null}
         </div>
       </header>
-      {panelVisible ? (
+      {allowHeaderDropdown && panelVisible ? (
         <button
           type="button"
           aria-label={tSite(siteLang, "closeMenu", "메뉴 닫기")}
           onClick={closeMenus}
-          className="hidden md:block fixed inset-x-0 bottom-0 top-[124px] z-[90] bg-black/35"
+          className="hidden md:block fixed inset-x-0 bottom-0 top-[72px] z-[90] bg-black/35"
         />
       ) : null}
-      <main className={`grow w-full min-h-0 ${removeMainFooterGap ? "pb-0" : "pb-10 md:pb-12"}`}>
-        {children}
-      </main>
-      <footer className={`${removeMainFooterGap ? "mt-0" : "mt-10 md:mt-14"} shrink-0 border-t border-slate-800 bg-[#1f2227]`}>
-        <div className="bg-[#1f2227]">
-          <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8 space-y-6">
-            <div className="pb-6 border-b border-slate-700">
-              <div className="mt-6">
-                {site?.footerLogoUrl ? (
-                  <img src={site.footerLogoUrl } alt="" className="max-w-[200px] h-auto object-contain" />
-                ) : (
-                  <div className="h-14 w-40 bg-[#1f2227] border border-slate-700" />
-                )}
-              </div>
-            </div>
+      {fullMenuMounted ? (
+        <div
+          className={`fixed inset-0 z-[220] text-white ${
+            fullMenuClosing ? "fullmenu-overlay-exit" : "fullmenu-overlay-enter"
+          }`}
+          role="dialog"
+          aria-modal="true"
+          aria-label={tSite(siteLang, "fullMenuDialog", "전체 메뉴")}
+        >
+          <div
+            className={`absolute inset-0 bg-gradient-to-br from-[#181210] via-[#241a18] to-[#120d0c] ${
+              fullMenuClosing ? "fullmenu-backdrop-exit" : "fullmenu-backdrop-enter"
+            }`}
+            aria-hidden
+          />
+          <svg
+            className={`pointer-events-none absolute bottom-0 right-[-4%] h-[min(40vh,360px)] w-[min(96vw,520px)] text-[#C52525] ${
+              fullMenuClosing ? "fullmenu-decor-exit" : "fullmenu-decor-enter"
+            }`}
+            style={{ opacity: 0.2 }}
+            viewBox="0 0 440 320"
+            preserveAspectRatio="xMaxYMax meet"
+            aria-hidden
+          >
+            <g fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">
+              <path d="M48 220 L120 140 L200 200 L280 100 L360 160 L400 88" />
+              <path d="M120 140 L200 88 L280 100" />
+              <path d="M200 200 L280 100 L360 160" />
+              <path d="M88 260 L200 200" />
+            </g>
+            <circle cx="120" cy="140" r="9" fill="currentColor" opacity="0.45" />
+            <circle cx="280" cy="100" r="11" fill="currentColor" opacity="0.55" />
+            <circle cx="200" cy="200" r="8" fill="currentColor" opacity="0.35" />
+            <circle cx="360" cy="160" r="7" fill="currentColor" opacity="0.4" />
+            <circle cx="400" cy="88" r="6" fill="currentColor" opacity="0.5" />
+          </svg>
 
-            <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,320px)] items-start pb-6 border-b border-slate-700">
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
-                {footerMenuGroups.map((group) => (
-                  <div key={group.title}>
-                    <p className="text-sm font-semibold text-slate-100 mb-2">{group.title}</p>
-                    <ul className="space-y-1">
-                      {group.items.map((item) => (
-                        <li key={`${group.title}-${item.to}`}>
-                          <Link href={item.to} className="text-sm !text-[#dbe4f2] hover:!text-white">
-                            {item.label}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
+          <div
+            className={`relative z-[2] flex max-h-[100dvh] min-h-0 flex-col overflow-y-auto overscroll-contain pt-[max(18px,env(safe-area-inset-top))] ${
+              fullMenuClosing ? "fullmenu-sheet-exit" : "fullmenu-sheet-enter"
+            }`}
+          >
+            <div className="container mx-auto w-full max-w-full px-4 pb-20 pt-10 md:max-w-[90%] md:px-6 md:pt-12">
+              <div className={`mb-8 flex items-center justify-between md:mb-10 ${fullMenuClosing ? "fullmenu-header-exit" : "fullmenu-header-enter"}`}>
+                <Link href="/" className="shrink-0" onClick={() => closeFullMenu()} title={tSite(siteLang, "home", "홈")}>
+                  <img
+                    src={site?.headerLogoUrl || "/logo.svg"}
+                    alt=""
+                    className="h-9 w-auto max-h-10 object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.5)] md:h-10"
+                  />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => closeFullMenu()}
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-white/25 bg-white/[0.06] hover:bg-white/10"
+                  aria-label={tSite(siteLang, "closeMenu", "닫기")}
+                  title={tSite(siteLang, "closeMenu", "닫기")}
+                >
+                  <IconCloseFourDots className="h-6 w-6 text-white" />
+                </button>
+              </div>
+
+              <div className="border-t border-white/10">
+                <div className="fullmenu-row-enter grid grid-cols-1 items-start gap-6 border-b border-white/10 py-7 md:grid-cols-[minmax(160px,240px)_1fr] md:gap-12 md:py-9" style={{ "--fm-delay": "110ms" }}>
+                  <div className="text-[26px] font-bold leading-[1.15] tracking-tight text-white md:text-[clamp(2rem,4vw,2.75rem)]">
+                    {pickKoEn(siteLang, "공식제조사", "Manufacturers")}
                   </div>
-                ))}
-              </div>
-              <div className="text-sm text-slate-400 space-y-2 leading-relaxed">
-                {shouldShowFooterAddress ? <p>{site.address}</p> : null}
-                <p>
-                  {site?.tel ? <span>TEL {site.tel}</span> : null}
-                  {site?.tel && site?.fax ? <span className="mx-1">|</span> : null}
-                  {site?.fax ? <span>FAX {site.fax}</span> : null}
-                  {(site?.tel || site?.fax) && site?.email ? <span className="mx-1">|</span> : null}
-                  {site?.email ? (
-                    <span>
-                      이메일{" "}
-                      <a href={`mailto:${site.email}`} className="text-slate-200 underline">
-                        {site.email}
-                      </a>
-                    </span>
-                  ) : null}
-                </p>
-                {site?.businessRegistrationNumber ? <p>사업자등록번호 {site.businessRegistrationNumber}</p> : null}
-              </div>
-            </div>
+                  <div className="flex flex-wrap gap-x-10 gap-y-3 text-[15px] md:text-lg">
+                    <Link href="/partners" onClick={() => closeFullMenu()} className="text-white/90 transition-colors hover:text-white">
+                      {pickKoEn(siteLang, "공식제조사", "Manufacturers")}
+                    </Link>
+                  </div>
+                </div>
 
-            <div className="text-center space-y-2 pb-2 md:pb-3">
-              <div className="flex flex-wrap justify-center gap-2">
-                {site?.termsUrl ? (
-                  <a
-                    href={site.termsUrl}
-                    className="inline-block px-3 py-1.5 text-xs font-bold border border-slate-500 bg-[#242831] !text-white transition-colors hover:bg-[#3a465a] hover:border-[#dbe4f2] hover:!text-white"
-                  >
-                    {site.termsTitle || "이용약관"}
-                  </a>
-                ) : null}
-                {site?.privacyUrl ? (
-                  <a
-                    href={site.privacyUrl}
-                    className="inline-block px-3 py-1.5 text-xs font-bold border border-slate-500 bg-[#242831] !text-white transition-colors hover:bg-[#3a465a] hover:border-[#dbe4f2] hover:!text-white"
-                  >
-                    {site.privacyTitle || "개인정보취급방침"}
-                  </a>
-                ) : null}
+                <div className="fullmenu-row-enter grid grid-cols-1 items-start gap-6 border-b border-white/10 py-7 md:grid-cols-[minmax(160px,240px)_1fr] md:gap-12 md:py-9" style={{ "--fm-delay": "170ms" }}>
+                  <div className="text-[26px] font-bold leading-[1.15] tracking-tight text-white md:text-[clamp(2rem,4vw,2.75rem)]">
+                    {pickKoEn(siteLang, "제품소개", "Products")}
+                  </div>
+                  <div className="flex flex-wrap gap-x-10 gap-y-3 text-[15px] md:text-lg">
+                    <Link href="/products" onClick={() => closeFullMenu()} className="text-white/90 hover:text-white">
+                      {pickKoEn(siteLang, "전체제품", "All products")}
+                    </Link>
+                    <Link href="/synthesis" onClick={() => closeFullMenu()} className="text-white/90 hover:text-white">
+                      {pickKoEn(siteLang, "합성서비스", "Synthesis")}
+                    </Link>
+                  </div>
+                </div>
+
+                <div className="fullmenu-row-enter grid grid-cols-1 items-start gap-6 border-b border-white/10 py-7 md:grid-cols-[minmax(160px,240px)_1fr] md:gap-12 md:py-9" style={{ "--fm-delay": "230ms" }}>
+                  <div className="text-[26px] font-bold leading-[1.15] tracking-tight text-white md:text-[clamp(2rem,4vw,2.75rem)]">
+                    {pickKoEn(siteLang, "뉴스룸", "Newsroom")}
+                  </div>
+                  <div className="flex flex-wrap gap-x-10 gap-y-3 text-[15px] md:text-lg">
+                    <Link href="/notices" onClick={() => closeFullMenu()} className="text-white/90 hover:text-white">
+                      {pickKoEn(siteLang, "공지사항", "Notices")}
+                    </Link>
+                    <Link href="/events" onClick={() => closeFullMenu()} className="text-white/90 hover:text-white">
+                      {pickKoEn(siteLang, "이벤트", "Events")}
+                    </Link>
+                    <Link href="/references" onClick={() => closeFullMenu()} className="text-white/90 hover:text-white">
+                      {pickKoEn(siteLang, "참고논문", "References")}
+                    </Link>
+                  </div>
+                </div>
+
+                <div className="fullmenu-row-enter grid grid-cols-1 items-start gap-6 py-7 md:grid-cols-[minmax(160px,240px)_1fr] md:gap-12 md:py-9" style={{ "--fm-delay": "290ms" }}>
+                  <div className="text-[26px] font-bold leading-[1.15] tracking-tight text-white md:text-[clamp(2rem,4vw,2.75rem)]">
+                    {pickKoEn(siteLang, "고객지원", "Support")}
+                  </div>
+                  <div className="flex flex-wrap gap-x-10 gap-y-3 text-[15px] md:text-lg">
+                    <Link href="/inquiry" onClick={() => closeFullMenu()} className="text-white/90 hover:text-white">
+                      {tSite(siteLang, "quoteInquiry", "견적문의")}
+                    </Link>
+                    <Link href="/customer/about" onClick={() => closeFullMenu()} className="text-white/90 hover:text-white">
+                      {pickKoEn(siteLang, "회사소개", "About")}
+                    </Link>
+                  </div>
+                </div>
               </div>
-              {site?.copyrightText ? (
-                <p className="text-xs text-slate-500">{site.copyrightText}</p>
-              ) : (
-                <p className="text-xs text-slate-600">저작권 문구를 관리자에서 설정해 주세요.</p>
-              )}
             </div>
           </div>
         </div>
-      </footer>
+      ) : null}
+      <main
+        className={`w-full ${mainUsesContentBand ? SITE_SUBPAGE_MAIN_BAND : ""} ${removeMainFooterGap ? "pb-0" : "pb-10 md:pb-12"}`}
+      >
+        {children}
+      </main>
+      {showFloatingQuickMenu ? <FloatingQuickMenu siteLang={siteLang} /> : null}
+      <SiteFooter
+        site={site}
+        footerMenuGroups={footerMenuGroups}
+        shouldShowFooterAddress={shouldShowFooterAddress}
+        rootClassName={`${removeMainFooterGap ? "mt-0" : "mt-10 md:mt-14"} shrink-0 border-t border-slate-800 bg-[#1f2227]`}
+      />
       <SitePopups />
       <VisitBeacon />
       </div>
-    </SiteLangContext.Provider>
+    </SiteShellContext.Provider>
   );
 }
 
@@ -828,13 +1036,13 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subM
   return (
     <div ref={rootRef} className={`relative z-[220] mt-2 md:mt-3 ${className}`}>
       <nav className="flex flex-wrap items-center gap-x-1.5 text-xs sm:text-sm text-slate-500" aria-label="현재 위치">
-        <Link href="/" className="inline-flex items-center shrink-0 text-slate-500 hover:text-[#002D5E]" title="홈" aria-label="홈">
-          <IconHomeCrumb />
+        <Link href="/" className="inline-flex items-center shrink-0 text-slate-500 hover:text-[#002D5E]" title="Home" aria-label="Home">
+          Home
         </Link>
         {(segments || []).map((seg, i) => (
           <span key={i} className="relative inline-flex items-center gap-x-1.5 min-w-0">
-            <span className="text-slate-300 shrink-0" aria-hidden>
-              |
+            <span className="shrink-0 text-[10px] text-[#C52525]" aria-hidden>
+              ●
             </span>
             {subMenus.length && i === anchorIndex ? (
               <>
@@ -857,7 +1065,7 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subM
                   </svg>
                 </button>
                 {open ? (
-                  <div className="absolute left-0 top-full z-[240] min-w-[180px] overflow-hidden rounded border border-slate-200 bg-white shadow-lg">
+                  <div className="absolute left-0 top-full z-[240] min-w-[180px] overflow-hidden rounded border border-slate-300 bg-slate-100 shadow-lg">
                     {subMenus.map((menu) => {
                       const active = subMenuIsActive ? subMenuIsActive(menu) : isCurrentSubMenu(menu.to);
                       return (
@@ -865,7 +1073,7 @@ function PageBreadcrumb({ segments, subMenus = [], subMenuAnchorIndex = -1, subM
                           key={`${menu.to}-${menu.label}`}
                           href={menu.to}
                           className={`block px-3 py-2 whitespace-nowrap ${
-                            active ? "bg-slate-100 text-[#002D5E] font-medium" : "text-slate-700 hover:bg-slate-50 hover:text-[#002D5E]"
+                            active ? "bg-slate-200 text-[#002D5E] font-medium" : "text-slate-700 hover:bg-slate-200 hover:text-[#002D5E]"
                           }`}
                         >
                           {menu.label}
@@ -916,29 +1124,44 @@ function boardSlugToEyebrow(slug) {
   return "BOARD";
 }
 
-function SitePageHeroBanner({ breadcrumb, eyebrow, title }) {
+function SitePageHeroBanner({ breadcrumb, eyebrow, title, innerClassName = "", sectionClassName = "" }) {
+  const titleText = typeof title === "string" || typeof title === "number" ? String(title) : "";
+  const titleChars = titleText ? Array.from(titleText) : null;
+
   return (
-    <section className="relative z-10 overflow-visible border-b border-slate-200/80 bg-slate-100">
-      <div
-        className="pointer-events-none absolute inset-0 bg-cover bg-[center_22%] sm:bg-center bg-no-repeat"
-        style={{ backgroundImage: "url(/patterns/page-hero-science-bg.png)" }}
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/75 via-white/35 to-sky-50/45"
-        aria-hidden
-      />
-      <div className="relative z-[1] mx-auto w-full max-w-full px-4 pb-5 pt-2 sm:pb-5 sm:pt-3 md:max-w-[85%] md:pb-6 md:pt-3">
-        <div className="mb-4 text-slate-600 md:mb-5">{breadcrumb}</div>
-        <header className="px-2 pb-1 text-center">
-          {eyebrow ? (
-            <p className="mb-2 flex items-center justify-center gap-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#1e3a5f] sm:text-xs">
-              <span className="h-px w-8 shrink-0 bg-slate-300/90" aria-hidden />
-              <span>{eyebrow}</span>
-              <span className="h-px w-8 shrink-0 bg-slate-300/90" aria-hidden />
-            </p>
-          ) : null}
-          <h1 className="text-2xl font-extrabold tracking-tight text-[#1a2a4e] sm:text-3xl md:text-[2rem] md:leading-tight">{title}</h1>
+    <section
+      className={`relative z-10 mt-[100px] overflow-visible bg-white pt-3 md:mt-[100px] md:pt-4 ${sectionClassName}`.trim()}
+    >
+      <div className={`w-full py-5 md:py-6 ${innerClassName}`.trim()}>
+        <header className="w-full">
+          <div className="flex w-full flex-col items-start justify-between gap-2 md:flex-row md:items-end md:gap-3">
+            <div className="min-w-0">
+            {eyebrow ? (
+                <p className="mb-2 flex items-center justify-start gap-3 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400 sm:text-[11px]">
+                <span className="h-px w-10 shrink-0 bg-slate-300/70" aria-hidden />
+                <span>{eyebrow}</span>
+              </p>
+            ) : null}
+              <h1
+                className="site-hero-title-wave text-[2.25rem] font-extrabold tracking-tight text-[#1a2a4e] sm:text-[2.8rem] md:text-[3.4rem] md:leading-[1.08]"
+                aria-label={titleChars ? titleText : undefined}
+              >
+                {titleChars
+                  ? titleChars.map((ch, i) => (
+                      <span
+                        key={`${ch}-${i}`}
+                        className="site-hero-title-char"
+                        style={{ "--hero-char-delay": `${i * 34}ms` }}
+                        aria-hidden="true"
+                      >
+                        {ch === " " ? "\u00A0" : ch}
+                      </span>
+                    ))
+                  : title}
+              </h1>
+            </div>
+            <div className="shrink-0 text-slate-500 [&>div]:!mt-0">{breadcrumb}</div>
+          </div>
         </header>
       </div>
     </section>
@@ -954,210 +1177,87 @@ const BOARD_DETAIL_SLUG_TITLE = {
 function HeroCarousel({ slides }) {
   const list = slides?.length ? slides : [];
   const [idx, setIdx] = useState(0);
-  const [dragPx, setDragPx] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const viewportRef = useRef(null);
-  const dragStartClientX = useRef(0);
-  const suppressLinkClick = useRef(false);
-  const isDraggingRef = useRef(false);
-  /** setPointerCapture는 링크 click 타깃을 깨뜨릴 수 있어 window 리스너만 사용 */
-  const dragWindowListenersRef = useRef(null);
-
   const n = list.length;
-  const slidePct = n > 0 ? 100 / n : 100;
 
   useEffect(() => {
     if (list.length <= 1) return undefined;
     const t = setInterval(() => {
-      if (!isDraggingRef.current) setIdx((i) => (i + 1) % list.length);
+      setIdx((i) => (i + 1) % list.length);
     }, 4000);
     return () => clearInterval(t);
   }, [list.length]);
-
-  useEffect(
-    () => () => {
-      const l = dragWindowListenersRef.current;
-      if (l) {
-        window.removeEventListener("pointermove", l.move);
-        window.removeEventListener("pointerup", l.up);
-        window.removeEventListener("pointercancel", l.up);
-        dragWindowListenersRef.current = null;
-      }
-    },
-    []
-  );
 
   if (!list.length) return null;
 
   const go = (delta) => setIdx((i) => (i + delta + list.length) % list.length);
 
-  const onBannerLinkClick = (e) => {
-    if (suppressLinkClick.current) {
-      e.preventDefault();
-      suppressLinkClick.current = false;
-    }
-  };
-
-  const clearDragWindowListeners = () => {
-    const l = dragWindowListenersRef.current;
-    if (!l) return;
-    window.removeEventListener("pointermove", l.move);
-    window.removeEventListener("pointerup", l.up);
-    window.removeEventListener("pointercancel", l.up);
-    dragWindowListenersRef.current = null;
-  };
-
-  const onViewportPointerDown = (e) => {
-    if (n <= 1) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    if (e.target instanceof Element && e.target.closest("[data-hero-dots]")) return;
-
-    clearDragWindowListeners();
-
-    const pointerId = e.pointerId;
-    dragStartClientX.current = e.clientX;
-    isDraggingRef.current = true;
-    setIsDragging(true);
-    setDragPx(0);
-    suppressLinkClick.current = false;
-
-    const move = (ev) => {
-      if (ev.pointerId !== pointerId) return;
-      const w = viewportRef.current?.offsetWidth || 400;
-      const max = w * 0.55;
-      const raw = ev.clientX - dragStartClientX.current;
-      setDragPx(Math.max(-max, Math.min(max, raw)));
-    };
-
-    const up = (ev) => {
-      if (ev.pointerId !== pointerId) return;
-      clearDragWindowListeners();
-
-      const w = viewportRef.current?.offsetWidth || 1;
-      const dx = ev.clientX - dragStartClientX.current;
-      const threshold = Math.max(72, Math.min(200, w * 0.18));
-      let committed = false;
-      if (dx < -threshold) {
-        go(1);
-        committed = true;
-      } else if (dx > threshold) {
-        go(-1);
-        committed = true;
-      }
-      if (committed) suppressLinkClick.current = true;
-
-      isDraggingRef.current = false;
-      setIsDragging(false);
-      setDragPx(0);
-    };
-
-    dragWindowListenersRef.current = { move, up };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-  };
-
   return (
     <section className="relative w-screen left-1/2 -translate-x-1/2 bg-[#0a2744]" aria-roledescription="carousel" aria-label="메인 배너">
-      <div
-        ref={viewportRef}
-        onPointerDown={onViewportPointerDown}
-        className={`relative h-[min(52vw,420px)] md:h-[440px] overflow-hidden ${n > 1 ? "cursor-grab touch-none select-none active:cursor-grabbing" : ""}`}
-      >
-        <div
-          className={`hero-carousel-track flex h-full ease-out ${isDragging ? "" : "transition-transform duration-700"}`}
-          style={{
-            width: `${n * 100}%`,
-            transform: `translateX(calc(-${idx * slidePct}% + ${dragPx}px))`,
-          }}
-        >
-          {list.map((s, i) => {
-            const hasImage = Boolean(s.imageUrl || s.mobileImageUrl);
-            const link = String(s.linkUrl || "").trim();
-            const isExternal = /^https?:\/\//i.test(link);
-            const linkLabel = s.title ? `${s.title} 바로가기` : "배너 바로가기";
-            const gradientClass =
-              "absolute inset-0 bg-gradient-to-br from-[#003a6b] via-[#002D5E] to-slate-900 flex items-center justify-center text-center px-6";
-            const titleFallback = <p className="text-white/90 text-xl md:text-2xl font-semibold">{s.title || "프로모션 배너"}</p>;
-
-            return (
-              <div
-                key={s._id || `slide-${i}`}
-                className="relative h-full shrink-0 overflow-hidden"
-                style={{ width: `${slidePct}%` }}
-                aria-hidden={i !== idx}
-              >
-                {hasImage ? (
-                  <>
-                    <picture className="absolute inset-0 block">
-                      <source media="(max-width: 767px)" srcSet={s.mobileImageUrl || s.imageUrl} />
-                      <img
-                        src={s.imageUrl || s.mobileImageUrl}
-                        alt={link ? "" : s.title || "메인 배너"}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        {...(link ? { role: "presentation" } : {})}
-                      />
-                    </picture>
-                    {link ? (
-                      isExternal ? (
-                        <a
-                          href={link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="absolute inset-0 z-[1] block cursor-pointer"
-                          aria-label={linkLabel}
-                          onClick={onBannerLinkClick}
-                        />
-                      ) : (
-                        <Link
-                          href={link}
-                          className="absolute inset-0 z-[1] block cursor-pointer"
-                          aria-label={linkLabel}
-                          onClick={onBannerLinkClick}
-                        />
-                      )
-                    ) : null}
-                  </>
-                ) : link ? (
-                  isExternal ? (
-                    <a
-                      href={link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`${gradientClass} cursor-pointer`}
-                      aria-label={linkLabel}
-                      onClick={onBannerLinkClick}
-                    >
-                      {titleFallback}
-                    </a>
-                  ) : (
-                    <Link href={link} className={`${gradientClass} cursor-pointer`} aria-label={linkLabel} onClick={onBannerLinkClick}>
-                      {titleFallback}
-                    </Link>
-                  )
-                ) : (
-                  <div className={gradientClass}>{titleFallback}</div>
-                )}
+      <div className="relative h-[min(62vw,560px)] md:h-screen overflow-hidden">
+        {list.map((s, i) => {
+          const hasImage = Boolean(s.imageUrl || s.mobileImageUrl);
+          const link = String(s.linkUrl || "").trim();
+          const isExternal = /^https?:\/\//i.test(link);
+          const linkLabel = s.title ? `${s.title} 바로가기` : "배너 바로가기";
+          const description = String(s.description || s.subtitle || "").trim();
+          const title = String(s.title || "").trim() || "프로모션 배너";
+          return (
+            <div
+              key={s._id || `slide-${i}`}
+              className={`absolute inset-0 transition-opacity duration-[1200ms] ease-in-out ${i === idx ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+              aria-hidden={i !== idx}
+            >
+              {hasImage ? (
+                <picture className="absolute inset-0 block">
+                  <source media="(max-width: 767px)" srcSet={s.mobileImageUrl || s.imageUrl} />
+                  <img src={s.imageUrl || s.mobileImageUrl} alt={title} className="absolute inset-0 h-full w-full object-cover" />
+                </picture>
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-[#003a6b] via-[#002D5E] to-slate-900" />
+              )}
+              <div className="absolute inset-0 bg-black/45" />
+              <div className="relative z-[1] flex h-full items-center">
+                <div className="container mx-auto max-w-full px-8 md:max-w-[85%]">
+                  <div
+                    className={`max-w-[min(90vw,760px)] transition-all duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                      i === idx ? "opacity-100 translate-y-0 translate-x-0" : "opacity-0 translate-y-2 translate-x-12"
+                    }`}
+                  >
+                    {description ? <p className="mb-3 text-lg font-medium text-white/90 md:text-2xl">{description}</p> : null}
+                    <h2 className="max-w-[18ch] text-[34px] font-extrabold leading-[1.12] tracking-tight text-white drop-shadow md:text-[58px]">
+                      {title}
+                    </h2>
+                  </div>
+                </div>
               </div>
-            );
-          })}
-        </div>
+              {link ? (
+                isExternal ? (
+                  <a href={link} target="_blank" rel="noreferrer" className="absolute inset-0 z-[2] block cursor-pointer" aria-label={linkLabel} />
+                ) : (
+                  <Link href={link} className="absolute inset-0 z-[2] block cursor-pointer" aria-label={linkLabel} />
+                )
+              ) : null}
+            </div>
+          );
+        })}
         {list.length > 1 ? (
-          <div data-hero-dots className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 flex gap-2.5 items-center">
-            {list.map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setIdx(i)}
-                className={`h-2.5 shrink-0 rounded-full transition-all duration-300 border ${
-                  i === idx
-                    ? "w-10 border-[#9f1d1d] bg-[#C52525] shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_4px_10px_rgba(197,37,37,0.45),0_2px_5px_rgba(0,0,0,0.35)]"
-                    : "w-2.5 border-white/45 bg-white/80 shadow-[0_2px_6px_rgba(0,0,0,0.35)] hover:border-[#C52525]/60 hover:bg-white"
-                }`}
-                aria-label={`배너 ${i + 1}`}
-                aria-current={i === idx ? "true" : undefined}
-              />
-            ))}
+          <div className="absolute left-[max(1.5rem,8vw)] top-[66%] z-20 flex -translate-y-1/2 items-center gap-2 md:left-[max(2rem,9vw)] md:top-[68%]">
+            <button
+              type="button"
+              onClick={() => go(-1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/55 bg-black/20 text-white hover:bg-black/35"
+              aria-label="이전 배너"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              onClick={() => go(1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/55 bg-black/20 text-white hover:bg-black/35"
+              aria-label="다음 배너"
+            >
+              ›
+            </button>
           </div>
         ) : null}
       </div>
@@ -1165,155 +1265,609 @@ function HeroCarousel({ slides }) {
   );
 }
 
+function HomeSectionTitle({ eyebrow, title, description, align = "left" }) {
+  return (
+    <div className={`${align === "center" ? "text-center" : ""} space-y-2`}>
+      {eyebrow ? <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#B5122B]">{eyebrow}</p> : null}
+      <h2 className="text-[34px] font-bold tracking-tight text-[#111111] md:text-[44px]">{title}</h2>
+      {description ? <p className="text-base text-[#666666] md:text-[17px]">{description}</p> : null}
+    </div>
+  );
+}
+
+function HomeBoardCards({ title, eyebrow, items, hrefBase, fallbackHref, badgeLabel }) {
+  return (
+    <section className="w-full bg-white">
+      <div className="container mx-auto max-w-full px-4 md:max-w-[85%]">
+        <div className="flex items-end justify-between gap-4">
+          <HomeSectionTitle eyebrow={eyebrow} title={title} />
+          <Link href={fallbackHref} className="text-sm font-semibold !text-[#B5122B] hover:opacity-80">
+            VIEW ALL
+          </Link>
+        </div>
+        <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+          {(items || []).slice(0, 3).map((x) => (
+            <Link
+              key={x._id}
+              href={`${hrefBase}/${x._id}`}
+              className="group rounded-xl border border-[#E5E5E5] bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="mb-3 inline-flex rounded-full border border-[#F7D9E5] bg-[#fff5f8] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#B5122B]">
+                {badgeLabel}
+              </div>
+              <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-[#111111] transition-colors group-hover:text-[#B5122B]">{x.title}</h3>
+              <p className="mt-2 line-clamp-2 text-sm text-[#666666]">{x.summary || "No summary available."}</p>
+              <p className="mt-3 text-xs text-[#777]">{formatPostDate(x.createdAt)}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function isOngoingEventItem(item) {
+  if (!item) return false;
+  if (item.forceEnded === true) return false;
+  const now = Date.now();
+  const startAt = item.startAt ? new Date(item.startAt).getTime() : null;
+  const endAt = item.endAt ? new Date(item.endAt).getTime() : null;
+  if (startAt && Number.isFinite(startAt) && startAt > now) return false;
+  if (endAt && Number.isFinite(endAt) && endAt < now) return false;
+  return true;
+}
+
+function HomeEventsCarousel({ items }) {
+  const site = useContext(SiteShellContext).site;
+  const companyName = String(site?.companyName || "").trim() || "하이미바이오메드";
+  const companyNameEn =
+    String(site?.companyNameEn || site?.companyEnglishName || site?.companyEn || "").trim() || "HiMEbiomed";
+  const sectionRef = useRef(null);
+  const wasInViewRef = useRef(false);
+  const [watermarkAnimSeed, setWatermarkAnimSeed] = useState(0);
+  const viewportRef = useRef(null);
+  const scrollByPage = (direction) => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const amount = Math.max(280, Math.floor(el.clientWidth * 0.9));
+    el.scrollBy({ left: direction * amount, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    const target = sectionRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        const isInView = Boolean(entry?.isIntersecting);
+        if (isInView && !wasInViewRef.current) {
+          setWatermarkAnimSeed((v) => v + 1);
+        }
+        wasInViewRef.current = isInView;
+      },
+      { threshold: 0.45 }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <section ref={sectionRef} className="relative flex min-h-screen w-full items-center overflow-hidden bg-[#F8F8F8]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <p
+          key={`event-watermark-top-${watermarkAnimSeed}`}
+          className="event-watermark event-watermark-top absolute left-[50vw] w-screen whitespace-nowrap text-center text-[clamp(120px,14vw,260px)] font-extrabold leading-none tracking-tight text-slate-900/[0.05]"
+        >
+          {companyNameEn}
+        </p>
+        <p
+          key={`event-watermark-bottom-${watermarkAnimSeed}`}
+          className="event-watermark event-watermark-bottom absolute left-[50vw] w-screen whitespace-nowrap text-center text-[clamp(120px,14vw,260px)] font-extrabold leading-none tracking-tight text-slate-900/[0.05]"
+        >
+          {companyNameEn}
+        </p>
+      </div>
+      <div className="relative z-[1] container mx-auto max-w-full px-4 md:max-w-[85%]">
+        <div className="flex items-start justify-between gap-4">
+          <div className="group/event-copy">
+            <p className="text-base font-extrabold tracking-[0.08em] text-[#B5122B]">Event</p>
+            <p className="mt-2 text-[40px] font-bold leading-tight text-[#111111] transition-transform duration-500 ease-out md:text-[50px] md:group-hover/event-copy:-translate-y-1">
+              <span className="whitespace-nowrap">{companyName}가</span>
+            </p>
+            <p className="mt-2 text-[40px] font-bold leading-tight text-[#111111] md:text-[50px]">
+              준비한 이벤트를 확인해 보세요<span className="text-[#C52525]">.</span>
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => scrollByPage(-1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#d6d6d6] text-slate-500 hover:border-[#B5122B] hover:text-[#B5122B]"
+              aria-label="이전 이벤트"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollByPage(1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#d6d6d6] text-slate-500 hover:border-[#B5122B] hover:text-[#B5122B]"
+              aria-label="다음 이벤트"
+            >
+              →
+            </button>
+          </div>
+        </div>
+
+        {items.length === 0 ? (
+          <p className="mt-8 py-10 text-center text-sm text-[#666666]">현재 진행중인 이벤트가 없습니다.</p>
+        ) : (
+          <div ref={viewportRef} className="mt-6 overflow-x-auto hide-scrollbar">
+            <div className="flex min-w-max gap-4 pb-2">
+              {items.map((x) => (
+                <Link
+                  key={x._id}
+                  href={`/events/${x._id}`}
+                  className="group block w-[330px] overflow-hidden border border-[#d7d7d7] bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="relative h-[206px] overflow-hidden bg-slate-100">
+                    {x.thumbnailUrl ? (
+                      <img src={x.thumbnailUrl} alt={x.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-sm text-slate-400">NO IMAGE</div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="line-clamp-2 text-[23px] font-semibold leading-snug text-[#111111]">{x.title}</h3>
+                    <p className="mt-2 line-clamp-2 text-base text-[#666666]">{x.summary || "이벤트 내용을 확인해 주세요."}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function HomeNewProductCarousel({ items }) {
+  const site = useContext(SiteShellContext).site;
+  const companyName = String(site?.companyName || "").trim() || "하이미바이오메드";
+  const list = (items || []).slice(0, 8);
+  const viewportRef = useRef(null);
+  const loopStepRef = useRef(0);
+  const isResettingRef = useRef(false);
+  const [progressRate, setProgressRate] = useState(0);
+  const [progressResetting, setProgressResetting] = useState(false);
+  const [cardWidth, setCardWidth] = useState(280);
+  const CARD_GAP_PX = 20;
+  const VISIBLE_CARD_COUNT = 3;
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return undefined;
+    const maxStartIndex = Math.max(0, list.length - VISIBLE_CARD_COUNT);
+    if (maxStartIndex <= 0) {
+      setProgressRate(0);
+      el.scrollTo({ left: 0, behavior: "auto" });
+      return undefined;
+    }
+
+    const syncCardWidth = () => {
+      const next = (el.clientWidth - CARD_GAP_PX * 2) / 3;
+      setCardWidth(Math.max(240, next));
+    };
+
+    const stepAndLoop = () => {
+      if (isResettingRef.current) return;
+      const first = el.querySelector("[data-new-product-card]");
+      if (!first) return;
+      const step = first.getBoundingClientRect().width + CARD_GAP_PX;
+      if (loopStepRef.current < maxStartIndex) {
+        loopStepRef.current += 1;
+        const next = loopStepRef.current * step;
+        el.scrollTo({ left: next, behavior: "smooth" });
+        setProgressRate(loopStepRef.current / maxStartIndex);
+        return;
+      }
+
+      // 마지막까지 채운 뒤 1번 카드로 돌아가며 진행바를 다시 줄인다.
+      isResettingRef.current = true;
+      setProgressRate(1);
+      fillTimeout = window.setTimeout(() => {
+        setProgressResetting(true);
+        setProgressRate(0);
+        loopStepRef.current = 0;
+        el.scrollTo({ left: 0, behavior: "auto" });
+        resetTimeout = window.setTimeout(() => {
+          setProgressResetting(false);
+          isResettingRef.current = false;
+        }, 420);
+      }, 520);
+    };
+
+    let fillTimeout;
+    let resetTimeout;
+    syncCardWidth();
+    loopStepRef.current = 0;
+    setProgressRate(0);
+    setProgressResetting(false);
+    isResettingRef.current = false;
+    el.scrollTo({ left: 0, behavior: "auto" });
+    window.addEventListener("resize", syncCardWidth);
+    const timer = window.setInterval(stepAndLoop, 3300);
+    return () => {
+      if (fillTimeout) window.clearTimeout(fillTimeout);
+      if (resetTimeout) window.clearTimeout(resetTimeout);
+      window.removeEventListener("resize", syncCardWidth);
+      window.clearInterval(timer);
+    };
+  }, [list.length]);
+
+  const progress = `${Math.max(0, Math.round(progressRate * 100))}%`;
+
+  const teaser = (x) => {
+    const raw = String(x?.summary || x?.shortDescription || x?.description || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    return raw || "신제품 정보를 확인해 주세요.";
+  };
+
+  return (
+    <section className="flex items-center bg-[#F8F8F8] py-12 md:min-h-screen">
+      <div className="container mx-auto max-w-full px-4 md:max-w-[85%]">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-extrabold tracking-[0.08em] text-[#B5122B]">New Product</p>
+            <h3 className="mt-2 text-[32px] font-bold leading-tight text-[#111111] md:text-[40px]">{companyName}의</h3>
+            <p className="mt-2 text-[32px] font-bold leading-tight text-[#111111] md:text-[40px]">
+              신제품을 만나보세요<span className="text-[#C52525]">.</span>
+            </p>
+          </div>
+          <Link
+            href="/products?isNew=true"
+            className="mt-1 inline-flex h-11 items-center rounded-full bg-[#C52525] px-6 text-base font-semibold text-white shadow-sm transition-all hover:brightness-105"
+          >
+            + View More
+          </Link>
+        </div>
+
+        <div ref={viewportRef} className="overflow-x-auto hide-scrollbar">
+          <div className="flex min-w-max gap-5 pb-2">
+            {list.map((x) => (
+              <Link
+                key={x._id}
+                href={`/products/${x._id}`}
+                data-new-product-card
+                className="group block shrink-0 border border-[#d8d8d8] bg-white/90 p-0 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                style={{ width: `${cardWidth}px` }}
+              >
+              <div className="aspect-[4/3] overflow-hidden bg-slate-100">
+                {x.thumbnailUrl ? (
+                  <img src={x.thumbnailUrl} alt={x.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-400">NO IMAGE</div>
+                )}
+              </div>
+              <div className="p-5">
+                <h4 className="line-clamp-2 text-[24px] font-semibold leading-snug text-[#111111]">{x.name}</h4>
+                <p className="mt-2 line-clamp-3 text-base leading-relaxed text-[#555555]">{teaser(x)}</p>
+              </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="mx-auto mt-7 h-[5px] w-[240px] rounded-full bg-[#e3e3e3]">
+          <div
+            className={`h-full rounded-full bg-[#B5122B] transition-[width] ${progressResetting ? "duration-400" : "duration-700"}`}
+            style={{ width: progress }}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Home() {
+  const site = useContext(SiteShellContext).site;
+  const companyName = String(site?.companyName || "").trim() || "하이미바이오메드";
+  const HOME_SECTION_LABELS = ["HOME", "PRODUCT", "NEW PRODUCT", "EVENT", "NEWS"];
+  const homeSectionsRef = useRef(null);
+  const isWheelTransitionRef = useRef(false);
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+  const [activeProductSplit, setActiveProductSplit] = useState("");
   const [banners, setBanners] = useState([]);
-  const [recommended, setRecommended] = useState([]);
   const [newItems, setNewItems] = useState([]);
-  const [partners, setPartners] = useState([]);
+  const [events, setEvents] = useState([]);
   const [homeNotices, setHomeNotices] = useState([]);
+  const [productCats, setProductCats] = useState([]);
+  const [synthesisCats, setSynthesisCats] = useState([]);
+  const isLightSection = activeSectionIndex >= 2;
+
+  useEffect(() => {
+    const getSections = () =>
+      Array.from(homeSectionsRef.current?.querySelectorAll("[data-home-section]") ?? []);
+
+    const scrollWindowToSectionTop = (el) => {
+      const y = el.getBoundingClientRect().top + window.scrollY;
+      isWheelTransitionRef.current = true;
+      window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+      window.setTimeout(() => {
+        isWheelTransitionRef.current = false;
+      }, 720);
+    };
+
+    const getCurrentSectionIndex = (sections) => {
+      if (!sections.length) return 0;
+      const anchor = window.scrollY + 24;
+      let idx = 0;
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const top = sections[i].getBoundingClientRect().top + window.scrollY;
+        if (anchor >= top - 8) {
+          idx = i;
+          break;
+        }
+      }
+      return idx;
+    };
+
+    const onWheel = (e) => {
+      if (typeof window === "undefined") return;
+      if (window.innerWidth < 1024) return;
+
+      const sections = getSections();
+      if (!sections.length) return;
+
+      const innerScrollable =
+        e.target instanceof Element ? e.target.closest("[data-home-inner-scroll]") : null;
+      if (innerScrollable) {
+        const el = innerScrollable;
+        const delta = e.deltaY || 0;
+        const atTop = el.scrollTop <= 0;
+        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+        const canScrollInside = (delta > 0 && !atBottom) || (delta < 0 && !atTop);
+        if (canScrollInside) return;
+        if (Math.abs(delta) < 72) return;
+      }
+
+      if (isWheelTransitionRef.current) {
+        e.preventDefault();
+        return;
+      }
+      if (Math.abs(e.deltaY) < 14) return;
+
+      const currentIndex = getCurrentSectionIndex(sections);
+      const dir = e.deltaY > 0 ? 1 : -1;
+
+      if (dir > 0 && currentIndex >= sections.length - 1) {
+        return;
+      }
+      if (dir < 0 && currentIndex <= 0) {
+        return;
+      }
+
+      const nextIndex = currentIndex + dir;
+      if (nextIndex < 0 || nextIndex >= sections.length) return;
+
+      e.preventDefault();
+      scrollWindowToSectionTop(sections[nextIndex]);
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
+
+  useEffect(() => {
+    const getSections = () =>
+      Array.from(homeSectionsRef.current?.querySelectorAll("[data-home-section]") ?? []);
+    const syncActiveSection = () => {
+      const sections = getSections();
+      if (!sections.length) return;
+      const anchor = window.scrollY + 24;
+      let idx = 0;
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const top = sections[i].getBoundingClientRect().top + window.scrollY;
+        if (anchor >= top - 8) {
+          idx = i;
+          break;
+        }
+      }
+      setActiveSectionIndex(idx);
+    };
+    syncActiveSection();
+    window.addEventListener("scroll", syncActiveSection, { passive: true });
+    window.addEventListener("resize", syncActiveSection);
+    return () => {
+      window.removeEventListener("scroll", syncActiveSection);
+      window.removeEventListener("resize", syncActiveSection);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
       try {
-        const [b, r, n, p, noticesRes] = await Promise.all([
+        const [b, n, noticesRes, eventsRes, productCatRes, synthesisCatRes] = await Promise.all([
           api.get("/banners"),
-          api.get("/products", { params: { isRecommended: true, limit: 8 } }),
           api.get("/products", { params: { isNew: true, limit: 8 } }),
-          api.get("/partners", { params: { type: "MANUFACTURER" } }),
-          api.get("/notices", { params: { page: 1, limit: 5 } }),
+          api.get("/notices", { params: { page: 1, limit: 20 } }),
+          api.get("/events", { params: { page: 1, limit: 20 } }),
+          api.get("/product-categories", { params: { scope: PRODUCT_CATEGORY_SCOPE.PRODUCTS } }),
+          api.get("/product-categories", { params: { scope: PRODUCT_CATEGORY_SCOPE.SYNTHESIS } }),
         ]);
         setBanners(b.data);
-        setRecommended((r.data.items || []).slice(0, 8));
         setNewItems((n.data.items || []).slice(0, 8));
-        setPartners(p.data);
-        setHomeNotices((noticesRes.data?.items || []).slice(0, 5));
+        setHomeNotices(noticesRes.data?.items || []);
+        setEvents((eventsRes.data?.items || []).filter((x) => isOngoingEventItem(x)));
+        setProductCats((productCatRes.data?.tree || []).map((x) => x?.name).filter(Boolean).slice(0, 8));
+        setSynthesisCats((synthesisCatRes.data?.tree || []).map((x) => x?.name).filter(Boolean).slice(0, 8));
       } catch {
         setBanners([]);
-        setRecommended([]);
         setNewItems([]);
-        setPartners([]);
         setHomeNotices([]);
+        setEvents([]);
+        setProductCats([]);
+        setSynthesisCats([]);
       }
     })();
   }, []);
 
   return (
-    <>
-      <HeroCarousel slides={banners} />
-      <section className="bg-white pt-10 md:pt-12 pb-10 md:pb-12">
-        <div className="container mx-auto max-w-full md:max-w-[85%] px-4">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-900">추천제품</h2>
-            {/* <p className="text-slate-500 text-sm mt-1">대표 제품 라인업</p> */}
-          </div>
-          <ProductGrid items={recommended} columns={4} variant="catalog" />
-          <div className="mt-8 flex justify-center md:mt-10">
-            <Link
-              href="/products?isRecommended=true"
-              className="inline-flex items-center justify-center rounded-full bg-[#0f2744] px-6 py-2.5 text-xs font-semibold uppercase tracking-wider !text-white shadow-sm transition-colors hover:bg-[#C52525] hover:!text-white md:px-8 md:py-3 md:text-[13px]"
+    <div ref={homeSectionsRef} className="w-full">
+      <div className="fixed right-4 top-1/2 z-[60] hidden -translate-y-1/2 md:flex md:flex-col md:items-start md:gap-2.5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <button
+            key={`home-section-dot-${i}`}
+            type="button"
+            onClick={() => {
+              const sections = Array.from(homeSectionsRef.current?.querySelectorAll("[data-home-section]") ?? []);
+              const target = sections[i];
+              if (!target) return;
+              const y = target.getBoundingClientRect().top + window.scrollY;
+              window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+            }}
+            className="group inline-flex items-center gap-2"
+            aria-label={`홈 섹션 ${i + 1}`}
+            aria-current={i === activeSectionIndex ? "true" : undefined}
+          >
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-full border transition-all duration-300 ${
+                i === activeSectionIndex
+                  ? isLightSection
+                    ? "border-[#C52525] bg-[#C52525] shadow-[0_0_0_1px_rgba(197,37,37,0.2),0_0_12px_rgba(197,37,37,0.35)]"
+                    : "border-white bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.25),0_0_12px_rgba(255,255,255,0.45)]"
+                  : isLightSection
+                  ? "border-slate-300 bg-slate-300 group-hover:border-slate-400 group-hover:bg-slate-400"
+                  : "border-white/45 bg-white/35 group-hover:border-white/80 group-hover:bg-white/80"
+              }`}
+              aria-hidden
+            />
+            <span
+              className={`text-[11px] font-semibold tracking-[0.12em] [text-shadow:0_1px_4px_rgba(0,0,0,0.45)] transition-colors ${
+                i === activeSectionIndex
+                  ? isLightSection
+                    ? "text-[#C52525]"
+                    : "text-white"
+                  : isLightSection
+                  ? "text-slate-400 group-hover:text-slate-600"
+                  : "text-white/75 group-hover:text-white/95"
+              }`}
             >
-              VIEW MORE +
-            </Link>
-          </div>
-        </div>
+              {HOME_SECTION_LABELS[i]}
+            </span>
+          </button>
+        ))}
+      </div>
+      <section data-home-section className="md:min-h-screen">
+        <HeroCarousel slides={banners} />
       </section>
 
-      <section className="bg-[#fafafa] pt-10 md:pt-12 pb-10 md:pb-12">
-        <div className="container mx-auto max-w-full md:max-w-[85%] px-4">
-          <div className="mb-4">
-            <h2 className="text-2xl font-bold text-slate-900">신상품</h2>
-            {/* <p className="text-slate-500 text-sm mt-1">최근 등록 제품</p> */}
-          </div>
-          <ProductGrid items={newItems} columns={4} variant="catalog" />
-          <div className="mt-8 flex justify-center md:mt-10">
-            <Link
-              href="/products?isNew=true"
-              className="inline-flex items-center justify-center rounded-full bg-[#0f2744] px-6 py-2.5 text-xs font-semibold uppercase tracking-wider !text-white shadow-sm transition-colors hover:bg-[#C52525] hover:!text-white md:px-8 md:py-3 md:text-[13px]"
-            >
-              VIEW MORE +
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="border-t border-[#fafafa] bg-white pt-10 md:pt-12 pb-10 md:pb-12">
-        <div className="container mx-auto max-w-full md:max-w-[85%] px-4">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-stretch lg:gap-10 xl:gap-12">
-            <div className="min-w-0 flex-1 lg:max-w-[calc(100%-22rem)]">
-              <div className="mb-2 flex items-end justify-between gap-3">
-                <h2 className="text-xl font-bold md:text-2xl">
-                  <Link
-                    href="/notices"
-                    className="text-slate-900 transition-colors hover:!text-[#C52525]"
-                  >
-                    공지사항
-                  </Link>
-                </h2>
-                <Link
-                  href="/notices"
-                  className="shrink-0 text-xs font-semibold tracking-wide text-[#2563eb] hover:text-[#1d4ed8] md:text-sm"
-                >
-                  VIEW MORE +
-                </Link>
+      <section data-home-section className="relative overflow-hidden md:min-h-screen">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(198,171,216,0.35),transparent_45%),radial-gradient(circle_at_80%_20%,rgba(255,151,188,0.35),transparent_42%),linear-gradient(140deg,#736f8c_0%,#8e6f87_46%,#974b63_100%)]" aria-hidden />
+        <div className="relative grid min-h-[520px] grid-cols-1 md:min-h-screen md:grid-cols-2">
+          <Link
+            href="/products"
+            onMouseEnter={() => setActiveProductSplit("products")}
+            onMouseLeave={() => setActiveProductSplit("")}
+            className="group relative flex min-h-[260px] items-center justify-center px-6 py-10 md:min-h-screen"
+          >
+            <div
+              className={`absolute inset-0 transition-colors duration-300 ${
+                activeProductSplit === "products" ? "bg-black/12" : activeProductSplit === "synthesis" ? "bg-black/40" : "bg-black/34"
+              }`}
+            />
+            <div className="relative z-[1] flex w-full max-w-[460px] flex-col items-center justify-center">
+              <h3
+                className={`text-center text-[42px] font-extrabold tracking-tight text-white drop-shadow transition-transform duration-300 md:text-[56px] ${
+                  activeProductSplit === "products" ? "-translate-y-2 md:-translate-y-3" : "translate-y-0"
+                }`}
+              >
+                Product
+              </h3>
+              <div
+                className={`pointer-events-none absolute left-1/2 top-[63%] w-full -translate-x-1/2 p-3 transition-all duration-300 ${
+                  activeProductSplit === "products" ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+                }`}
+              >
+                <ul className="grid grid-cols-1 gap-3 text-[15px] font-semibold text-white md:grid-cols-2">
+                  {(productCats.length ? productCats : ["Recombinant Protein", "Assay Kit", "Antibody", "Research Biosimilar", "Enzyme", "Trending Product", "Super-Affinity Antibody"])
+                    .slice(0, 8)
+                    .map((name) => (
+                      <li key={`product-cat-${name}`} className="rounded-lg border border-white/45 bg-white/5 px-3 py-2">
+                        {name}
+                      </li>
+                    ))}
+                </ul>
               </div>
-              <div className="border-b-2 border-slate-900" />
-              <ul className="divide-y divide-slate-200">
-                {homeNotices.length === 0 ? (
-                  <li className="py-6 text-sm text-slate-500">등록된 공지가 없습니다.</li>
-                ) : (
-                  homeNotices.map((x) => (
-                    <li key={x._id}>
-                      <Link
-                        href={`/notices/${x._id}`}
-                        className="group block py-3.5 text-[15px] leading-snug text-slate-800 transition-colors hover:!text-[#C52525] md:py-3.5 md:text-base"
-                      >
-                        <span className="line-clamp-1 transition-colors group-hover:!text-[#C52525]">{x.title}</span>
-                      </Link>
-                    </li>
-                  ))
-                )}
-              </ul>
             </div>
-            <div className="flex shrink-0 flex-col gap-3 lg:w-[min(100%,20rem)] xl:w-[22rem] lg:min-h-0 lg:justify-stretch">
-              <Link
-                href="/inquiry"
-                className="flex min-h-[100px] flex-1 items-center justify-between gap-3 rounded-sm bg-[#0f2744] px-5 py-5 !text-white shadow-sm transition-colors hover:bg-[#0a1f35] md:min-h-[108px] md:px-6 md:py-6"
+          </Link>
+          <Link
+            href="/synthesis"
+            onMouseEnter={() => setActiveProductSplit("synthesis")}
+            onMouseLeave={() => setActiveProductSplit("")}
+            className="group relative flex min-h-[260px] items-center justify-center px-6 py-10 md:min-h-screen"
+          >
+            <div
+              className={`absolute inset-0 transition-colors duration-300 ${
+                activeProductSplit === "synthesis" ? "bg-black/12" : activeProductSplit === "products" ? "bg-black/40" : "bg-black/14"
+              }`}
+            />
+            <div className="relative z-[1] w-full max-w-[460px]">
+              <h3
+                className={`text-center text-[42px] font-extrabold tracking-tight text-white drop-shadow transition-transform duration-300 md:text-[56px] ${
+                  activeProductSplit === "synthesis" ? "-translate-y-2 md:-translate-y-3" : "translate-y-0"
+                }`}
               >
-                <IconInquiry className="h-10 w-10 shrink-0 text-white md:h-11 md:w-11" />
-                <span className="flex-1 text-center text-lg font-semibold leading-tight text-white md:text-xl">
-                  온라인 견적문의
-                </span>
-                <span className="shrink-0 text-xl font-light text-white/90 md:text-2xl" aria-hidden>
-                  →
-                </span>
-              </Link>
-              <Link
-                href="/customer/about"
-                className="flex min-h-[100px] flex-1 items-center justify-between gap-3 rounded-sm border border-slate-300 bg-white px-5 py-5 text-slate-900 shadow-sm transition-colors hover:border-slate-400 md:min-h-[108px] md:px-6 md:py-6"
-              >
-                <IconBookSimple className="h-10 w-10 shrink-0 text-[#c2410c] md:h-11 md:w-11" />
-                <span className="flex-1 text-center text-lg font-semibold leading-tight text-slate-900 md:text-xl">
-                  회사소개
-                </span>
-                <span className="shrink-0 text-xl font-light text-slate-400 md:text-2xl" aria-hidden>
-                  →
-                </span>
-              </Link>
+                Synthesis
+              </h3>
             </div>
-          </div>
+          </Link>
         </div>
       </section>
 
-      <section className="bg-[#fafafa] pt-10 md:pt-12 pb-8 md:pb-12">
-        <div className="container mx-auto max-w-full md:max-w-[85%] px-4">
-          <div className="mb-4">
-            <h2 className="text-2xl font-bold text-slate-900">Partners</h2>
-            {/* <p className="text-slate-500 text-sm mt-1">Partner logos</p> */}
+      <section data-home-section className="md:min-h-screen">
+        <HomeNewProductCarousel items={newItems} />
+      </section>
+
+      <section data-home-section className="flex items-center bg-[#F8F8F8] md:min-h-screen">
+        <HomeEventsCarousel items={events} />
+      </section>
+
+      <section data-home-section className="flex items-center bg-white md:min-h-screen">
+        <div className="container mx-auto max-w-full px-4 md:max-w-[85%]">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <HomeSectionTitle
+              eyebrow="News"
+              title={`${companyName}의`}
+              description="최신 소식을 전해드립니다."
+            />
+            <Link href="/notices" className="text-sm font-semibold !text-[#B5122B] hover:opacity-80">
+              VIEW ALL
+            </Link>
           </div>
-          <PartnerLogoMarquee partners={partners} />
+          <div data-home-inner-scroll className="news-scroll-red max-h-[396px] overflow-y-auto rounded-2xl pr-1">
+            {(homeNotices || []).map((x, idx) => (
+              <Link
+                key={x._id}
+                href={`/notices/${x._id}`}
+                className="group relative mb-3 grid grid-cols-[86px_minmax(0,1fr)] items-center gap-4 rounded-xl border border-[#E5E5E5] bg-white px-5 py-5 shadow-sm transition-colors hover:bg-[#fff7fa] last:mb-0"
+              >
+                <span className="group/num relative text-[34px] font-bold tabular-nums text-[#B5122B]">
+                  {String(idx + 1).padStart(2, "0")}
+                  {x.thumbnailUrl ? (
+                    <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-3 hidden w-[180px] -translate-y-1/2 overflow-hidden rounded-lg border border-white/70 bg-white shadow-xl md:group-hover/num:block">
+                      <img src={x.thumbnailUrl} alt="" className="h-[112px] w-full object-cover" />
+                    </span>
+                  ) : null}
+                </span>
+                <div className="min-w-0">
+                  <p className="line-clamp-1 text-lg font-semibold text-[#111111]">{x.title}</p>
+                  <p className="mt-1 text-sm text-[#666666]">{formatPostDate(x.createdAt)}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
@@ -1760,7 +2314,7 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
         title={heroTitle}
         subtitle={heroSubtitle}
       />
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
       <div className="relative mt-6 md:mt-8 w-full">
         <div className="space-y-4">
           <form onSubmit={applySearch} className="flex w-full items-center justify-between gap-3">
@@ -1772,7 +2326,7 @@ function ProductCatalogPage({ businessType = "MANUFACTURER" }) {
               <div className="relative">
                 <input
                   id={`product-search-${businessType}`}
-                  className="h-10 w-full rounded-none border border-slate-300 pl-3 pr-10 text-sm"
+                  className="h-10 w-full rounded-full border border-[#C52525] pl-4 pr-11 text-sm"
                   placeholder="제품명 검색"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -1843,7 +2397,7 @@ function CustomerSupportStaticPage({ title, subtitle, body }) {
         title={title}
         subtitle={subtitle}
       />
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
         <article className="mt-8 card p-6 md:p-8 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{body}</article>
       </div>
     </>
@@ -1973,7 +2527,7 @@ function OrderGuidePage() {
         title="주문가이드"
         subtitle="주문 절차 및 유의사항입니다. 제조사별 주의·요구사항·납기 등은 관리자에서 등록한 내용이 아래에 표시됩니다."
       />
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
       <article className="mt-8 card p-6 md:p-8 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{intro}</article>
       {loading ? <p className="mt-6 text-slate-500 text-sm">불러오는 중…</p> : null}
       {!loading && withGuide.length === 0 ? (
@@ -2264,7 +2818,7 @@ function DirectionsPage() {
         title="오시는길"
         subtitle={null}
       />
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
       <div className="mt-8 space-y-0">
         <section aria-labelledby="directions-map-heading">
           <h2 id="directions-map-heading" className="text-base font-semibold text-slate-900 mb-3">
@@ -2319,7 +2873,7 @@ function PartnersPage({ type }) {
             : "검증된 공식 제조사를 검색한 뒤, 제조사별 제품 카탈로그로 이동할 수 있습니다."
         }
       />
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
       <div className="mt-6 md:mt-8">
       {showSearch ? (
         <div className="mb-4 flex justify-center">
@@ -2439,7 +2993,7 @@ function PartnerProducts() {
         title={partnerProductsTitle}
         subtitle="제품명으로 검색한 뒤 상세 페이지에서 견적문의를 진행할 수 있습니다."
       />
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
         <div className="mt-6 md:mt-8 w-full">
           <div className="space-y-4">
             <form
@@ -2456,7 +3010,7 @@ function PartnerProducts() {
                 <div className="relative">
                   <input
                     id="partner-product-search"
-                    className="h-10 w-full rounded-none border border-slate-300 pl-3 pr-10 text-sm"
+                    className="h-10 w-full rounded-full border border-[#C52525] pl-4 pr-11 text-sm"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="제품명 검색"
@@ -2580,9 +3134,9 @@ function ProductDetail() {
             </div>
           </section>
 
-          <section className="w-full bg-[#fafafa]">
+          <section className="w-full bg-white">
             {htmlFieldHasContent(item.contentHtml) ? (
-              <div className="w-full bg-[#fafafa] py-6 md:py-8">
+              <div className="w-full bg-white py-6 md:py-8">
                 <div className={`${PRODUCT_DETAIL_CONTENT_INNER} space-y-4`}>
                   <h3 className={PRODUCT_DETAIL_SECTION_HEAD_CLASS}>상세보기</h3>
                   <div className={`${PRODUCT_DETAIL_BODY_CLASS} text-slate-700`} dangerouslySetInnerHTML={{ __html: item.contentHtml }} />
@@ -2595,7 +3149,7 @@ function ProductDetail() {
                 </div>
               </div>
             ) : (
-              <div className={`${PRODUCT_DETAIL_CONTENT_INNER} space-y-4 bg-[#fafafa] pt-8`}>
+              <div className={`${PRODUCT_DETAIL_CONTENT_INNER} space-y-4 bg-white pt-8`}>
                 <h3 className={PRODUCT_DETAIL_SECTION_HEAD_CLASS}>상세보기</h3>
                 <p className="text-sm leading-7 text-slate-600">{item.description || "상세 정보가 없습니다."}</p>
                 {item.specification ? (
@@ -2608,7 +3162,7 @@ function ProductDetail() {
 
           <ProductDetailSpecAccordions item={item} />
 
-          <section className="w-full bg-[#fafafa] ">
+          <section className="w-full bg-white">
             <div className={`${PRODUCT_DETAIL_CONTENT_INNER} space-y-5 pt-8`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className={PRODUCT_DETAIL_SECTION_HEAD_CLASS}>주문정보</h3>
@@ -2652,7 +3206,7 @@ function ProductDetail() {
             </div>
           </section>
 
-          <section className="w-full bg-[#fafafa]">
+          <section className="w-full bg-white">
             <div className={`${PRODUCT_DETAIL_CONTENT_INNER} pt-8 pb-8`}>
               <RecommendedProductsCarousel items={recommendedItems} />
             </div>
@@ -3086,12 +3640,12 @@ function BoardListPage({ slug, fallbackTitle }) {
 
   if (err) {
     return (
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">
+      <div className="w-full py-8">
         <div className="card p-5 text-red-600">{err}</div>
       </div>
     );
   }
-  if (!data?.board) return <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">Loading…</div>;
+  if (!data?.board) return <div className="w-full py-8">Loading…</div>;
 
   const { board, items, total, hasMore, limit: listLimit = 20 } = data;
   const totalPages = Math.max(1, Math.ceil((total ?? 0) / listLimit));
@@ -3138,7 +3692,7 @@ function BoardListPage({ slug, fallbackTitle }) {
           <div className="relative">
           <input
             id={`board-search-${slug}`}
-            className="h-10 w-full rounded-none border border-slate-300 pl-3 pr-10 text-sm"
+            className="h-10 w-full rounded-full border border-[#C52525] pl-4 pr-11 text-sm"
             placeholder="검색"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -3168,7 +3722,7 @@ function BoardListPage({ slug, fallbackTitle }) {
     return (
       <>
         {listPageHeader}
-        <div className="container mx-auto max-w-full md:max-w-[92%] 2xl:max-w-[96%] px-4 py-6 md:py-8">
+        <div className="w-full py-6 md:py-8">
         <div className="mt-6 md:mt-8">
         {searchBar}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-4 gap-x-5 md:gap-x-6">
@@ -3224,7 +3778,7 @@ function BoardListPage({ slug, fallbackTitle }) {
       <>
       {listPageHeader}
       <div
-        className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8"
+        className="w-full py-6 md:py-8"
       >
         <div className="mt-6 md:mt-8">
         {searchBar}
@@ -3360,7 +3914,7 @@ function BoardListPage({ slug, fallbackTitle }) {
   return (
     <>
       {listPageHeader}
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
       <div className="mt-6 md:mt-8">
       {searchBar}
       <div className={`overflow-x-auto bg-white ${isNoticeTable ? "border-0" : "border-y border-slate-200"}`}>
@@ -3459,8 +4013,8 @@ function BoardPostDetailPage({ slug }) {
       .catch(() => setAdjacent({ prev: null, next: null }));
   }, [slug, id]);
 
-  if (err) return <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8"><div className="card p-5 text-red-600">{err}</div></div>;
-  if (!item) return <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-8">Loading…</div>;
+  if (err) return <div className="w-full py-8"><div className="card p-5 text-red-600">{err}</div></div>;
+  if (!item) return <div className="w-full py-8">Loading…</div>;
 
   const listPath = `/${slug}`;
   const boardListLabel = BOARD_DETAIL_SLUG_TITLE[slug] || slug;
@@ -3493,7 +4047,7 @@ function BoardPostDetailPage({ slug }) {
         title={boardListLabel}
         subtitle={boardDetailHeroSubtitle}
       />
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 py-6 md:py-8">
+      <div className="w-full py-6 md:py-8">
       <div className="mt-4 md:mt-6 space-y-4">
       <article className="text-slate-800">
         <header className="border-t border-b border-slate-200 bg-white">
@@ -3687,7 +4241,7 @@ function InquiryPage() {
       breadcrumbSupport: isEn ? "Customer Support" : "고객지원",
       pageTitle: isEn ? "Inquiry" : "견적문의",
       pageSubtitle: isEn ? "Submit the form below and our team will contact you." : "아래 폼으로 문의하시면 담당자가 연락드립니다.",
-      requiredHint: isEn ? "* Required fields" : "* 는 필수 입력사항입니다.",
+      requiredHint: isEn ? "* Required fields" : "는 필수 입력사항입니다.",
       sectionRequester: isEn ? "Requester Information" : "문의자 정보",
       type: isEn ? "Type" : "구분",
       typeUser: isEn ? "User" : "유저",
@@ -3700,7 +4254,7 @@ function InquiryPage() {
       phonePh: isEn ? "Please enter phone number." : "전화번호를 입력해주세요.",
       email: isEn ? "Email" : "이메일",
       emailPh: isEn ? "Please enter email address." : "이메일을 입력해주세요.",
-      sectionProduct: isEn ? "Product Information" : "문의 제품 정보",
+      sectionProduct: isEn ? "Product Information" : "문의내용",
       brand: isEn ? "Manufacturer / Brand" : "제조사",
       brandPh: isEn ? "Please enter manufacturer/brand." : "제조사를 입력해주세요.",
       catalogNo: isEn ? "Catalog Number" : "카탈로그 넘버",
@@ -3709,7 +4263,7 @@ function InquiryPage() {
       productNamePh: isEn ? "Please enter product name." : "제품명을 입력해주세요.",
       qty: isEn ? "Quantity" : "수량",
       qtyPh: isEn ? "Please enter quantity." : "수량을 입력해주세요.",
-      message: isEn ? "Message" : "문의내용",
+      message: isEn ? "Message" : "상세 문의",
       sectionEtc: isEn ? "Additional Information" : "기타 정보 수집",
       source: isEn ? "How did you hear about us?" : "알게 된 경로",
       otherPh: isEn ? "Please enter details." : "내용을 입력해주세요.",
@@ -3802,7 +4356,7 @@ function InquiryPage() {
 
   if (done) {
     return (
-      <div className="container mx-auto max-w-full md:max-w-[85%] px-4 pt-14 md:pt-20 pb-10 md:pb-14">
+      <div className="w-full pt-14 md:pt-20 pb-10 md:pb-14">
         <div className="mt-8 md:mt-10 card p-8 text-center text-slate-800">
           <p className="text-lg font-semibold">{L.doneTitle}</p>
           <p className="mt-2 text-slate-600 text-sm">{L.doneDesc}</p>
@@ -3814,7 +4368,8 @@ function InquiryPage() {
     );
   }
 
-  const fieldClass = "w-full border border-slate-200 rounded-md px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400";
+  const fieldClass =
+    "w-full border border-slate-200 rounded-none px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400";
 
   return (
     <>
@@ -3822,39 +4377,40 @@ function InquiryPage() {
         eyebrow="INQUIRY"
         breadcrumb={<PageBreadcrumb className="!mt-0" segments={[{ label: L.breadcrumbSupport }, { label: L.pageTitle }]} subMenus={CUSTOMER_SUPPORT_SUB} />}
         title={L.pageTitle}
-        subtitle={L.pageSubtitle}
       />
-      <div className="container mx-auto max-w-4xl px-4 py-6 md:py-8 pb-16 md:pb-24">
-      <form onSubmit={onSubmit} className="card p-6 md:p-8 mt-6 md:mt-8 space-y-8 bg-white">
+      <div className="w-full max-w-7xl mx-auto pt-4 md:pt-5 pb-16 md:pb-24">
+      <form onSubmit={onSubmit} className="p-5 md:p-8 md:px-10 mt-3 md:mt-4 space-y-8 bg-white">
         <p className="text-right text-sm text-slate-500">
           <span className="text-red-600">*</span> {L.requiredHint}
         </p>
 
-        <section className="space-y-4 border-b border-slate-200 pb-8">
-          <h2 className="text-lg font-bold text-slate-900 border-l-4 border-[#002D5E] pl-3">{L.sectionRequester}</h2>
-          <div className="grid md:grid-cols-2 gap-x-8 gap-y-4">
-            <div className="md:col-span-2">
-              <label className="block text-base font-medium text-slate-700 mb-2">
+        <section className="pb-8">
+          <h2 className="border-b border-slate-200 pb-4 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+            {L.sectionRequester}
+          </h2>
+          <div className="mt-5 grid md:grid-cols-2 gap-x-10 gap-y-4 lg:gap-x-14">
+            <div className="md:col-span-2 flex flex-nowrap items-center gap-4 text-base sm:gap-8">
+              <span className="shrink-0 text-base font-semibold text-slate-800">
                 {L.type} <span className="text-red-600">*</span>
-              </label>
-              <div className="flex flex-wrap gap-6 text-base">
-                <label className="inline-flex items-center gap-2 cursor-pointer">
+              </span>
+              <div className="flex min-w-0 flex-nowrap items-center gap-6 sm:gap-8">
+                <label className="inline-flex shrink-0 items-center gap-2 cursor-pointer whitespace-nowrap">
                   <input
                     type="radio"
                     name="inquirerType"
                     checked={form.inquirerType === "USER"}
                     onChange={() => setForm({ ...form, inquirerType: "USER" })}
-                    className="text-[#002D5E]"
+                    className="h-4 w-4 accent-red-600"
                   />
                   {L.typeUser}
                 </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
+                <label className="inline-flex shrink-0 items-center gap-2 cursor-pointer whitespace-nowrap">
                   <input
                     type="radio"
                     name="inquirerType"
                     checked={form.inquirerType === "DEALER"}
                     onChange={() => setForm({ ...form, inquirerType: "DEALER" })}
-                    className="text-[#002D5E]"
+                    className="h-4 w-4 accent-red-600"
                   />
                   {L.typeDealer}
                 </label>
@@ -3912,9 +4468,11 @@ function InquiryPage() {
           </div>
         </section>
 
-        <section className="space-y-4 border-b border-slate-200 pb-8">
-          <h2 className="text-lg font-bold text-slate-900 border-l-4 border-[#002D5E] pl-3">{L.sectionProduct}</h2>
-          <div className="grid md:grid-cols-2 gap-x-8 gap-y-4">
+        <section className="pb-8">
+          <h2 className="border-b border-slate-200 pb-4 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+            {L.sectionProduct}
+          </h2>
+          <div className="mt-5 grid md:grid-cols-2 gap-x-10 gap-y-4 lg:gap-x-14">
             <div>
               <label className="block text-base font-medium text-slate-700 mb-1">
                 {L.brand} <span className="text-red-600">*</span>
@@ -3972,9 +4530,11 @@ function InquiryPage() {
           </div>
         </section>
 
-        <section className="space-y-4 border-b border-slate-200 pb-8">
-          <h2 className="text-lg font-bold text-slate-900 border-l-4 border-[#002D5E] pl-3">{L.sectionEtc}</h2>
-          <div>
+        <section className="pb-8">
+          <h2 className="border-b border-slate-200 pb-4 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+            {L.sectionEtc}
+          </h2>
+          <div className="mt-5">
             <label className="block text-base font-medium text-slate-700 mb-2">{L.source}</label>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-6 gap-y-2.5 text-base">
               {INQUIRY_HOW_HEARD.map((opt) => (
@@ -3984,7 +4544,7 @@ function InquiryPage() {
                     name="howHeard"
                     checked={form.howHeard === opt.value}
                     onChange={() => setForm({ ...form, howHeard: opt.value, howHeardOther: opt.value === "OTHER" ? form.howHeardOther : "" })}
-                    className="text-[#002D5E]"
+                    className="h-4 w-4 accent-red-600"
                   />
                   <span className={opt.value === "OTHER" ? "inline-flex max-w-full items-center gap-2 whitespace-nowrap" : "inline-flex items-center"}>
                     {pickKoEn(siteLang, opt.ko, opt.en)}
@@ -4003,9 +4563,9 @@ function InquiryPage() {
               ))}
             </div>
           </div>
-          <div>
+          <div className="mt-6">
             <label className="block text-base font-medium text-slate-700 mb-1">{L.attachment}</label>
-            <input type="file" accept="image/*,.pdf,application/pdf" disabled={uploadBusy} onChange={onFile} className="block w-full text-base border border-slate-200 rounded-md p-2.5 bg-white" />
+            <input type="file" accept="image/*,.pdf,application/pdf" disabled={uploadBusy} onChange={onFile} className="block w-full text-base border border-slate-200 rounded-none p-2.5 bg-white" />
             <p className="text-sm text-slate-500 mt-1">{L.attachmentHint}</p>
             {form.attachmentUrl ? (
               <p className="text-sm text-[#002D5E] mt-2 break-all">
@@ -4018,16 +4578,18 @@ function InquiryPage() {
           </div>
         </section>
 
-        <section className="space-y-4">
-          <h2 className="text-lg font-bold text-slate-900 border-l-4 border-[#002D5E] pl-3">{L.sectionPrivacy}</h2>
-          <div className="border border-slate-200 rounded-md bg-slate-50 p-4 max-h-56 overflow-y-auto text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{isEn ? INQUIRY_PRIVACY_TEXT_EN : INQUIRY_PRIVACY_TEXT}</div>
-          <div className="flex flex-wrap items-center justify-center gap-3 text-center">
+        <section>
+          <h2 className="border-b border-slate-200 pb-4 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+            {L.sectionPrivacy}
+          </h2>
+          <div className="mt-5 border border-slate-200 rounded-md bg-slate-50 p-4 max-h-56 overflow-y-auto text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{isEn ? INQUIRY_PRIVACY_TEXT_EN : INQUIRY_PRIVACY_TEXT}</div>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-center">
             <label className="inline-flex items-center gap-2 text-base text-slate-800 cursor-pointer">
               <input
                 type="checkbox"
                 checked={form.privacyAgreed}
                 onChange={(e) => setForm({ ...form, privacyAgreed: e.target.checked })}
-                className="rounded border-slate-300 text-[#002D5E]"
+                className="h-4 w-4 rounded border-slate-300 accent-red-600"
               />
               {L.agree} <span className="text-red-600">*</span>
             </label>

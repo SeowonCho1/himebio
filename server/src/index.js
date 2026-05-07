@@ -796,6 +796,14 @@ function normalizeBoardPostAttachments(raw) {
   return out;
 }
 
+function normalizeBoardPostRelatedProductId(raw) {
+  if (raw == null || raw === "") return null;
+  const v = String(raw).trim();
+  if (!v) return null;
+  if (!mongoose.isValidObjectId(v)) throw new Error("관련 제품 ID가 올바르지 않습니다.");
+  return v;
+}
+
 function parseBoardPostUpdate(body) {
   const raw = normalizeBody(body || {});
   const out = {};
@@ -811,6 +819,7 @@ function parseBoardPostUpdate(body) {
     "endAt",
     "forceEnded",
     "youtubeUrl",
+    "relatedProductId",
   ];
   for (const k of keys) {
     if (!Object.prototype.hasOwnProperty.call(raw, k)) continue;
@@ -824,6 +833,9 @@ function parseBoardPostUpdate(body) {
   if (Object.prototype.hasOwnProperty.call(raw, "attachments")) {
     out.attachments = normalizeBoardPostAttachments(raw.attachments);
   }
+  if (Object.prototype.hasOwnProperty.call(raw, "relatedProductId")) {
+    out.relatedProductId = normalizeBoardPostRelatedProductId(raw.relatedProductId);
+  }
   return out;
 }
 
@@ -836,6 +848,11 @@ app.post("/api/admin/board-posts", authAdmin, async (req, res) => {
     if (!b) return res.status(400).json({ error: "게시판을 찾을 수 없습니다." });
     const title = String(raw.title || "").trim();
     if (!title) return res.status(400).json({ error: "제목은 필수입니다." });
+    const relatedProductId = normalizeBoardPostRelatedProductId(raw.relatedProductId);
+    if (relatedProductId) {
+      const product = await Product.findById(relatedProductId).select("_id").lean();
+      if (!product) return res.status(400).json({ error: "관련 제품을 찾을 수 없습니다." });
+    }
     const doc = await BoardPost.create({
       boardId,
       title,
@@ -848,6 +865,7 @@ app.post("/api/admin/board-posts", authAdmin, async (req, res) => {
       endAt: raw.endAt && String(raw.endAt).trim() ? new Date(raw.endAt) : null,
       forceEnded: Boolean(raw.forceEnded === true || raw.forceEnded === "true"),
       youtubeUrl: String(raw.youtubeUrl || "").trim(),
+      relatedProductId,
       attachments: normalizeBoardPostAttachments(raw.attachments),
     });
     res.status(201).json(doc);
@@ -866,6 +884,10 @@ app.put("/api/admin/board-posts/:id", authAdmin, async (req, res) => {
     if (updates.boardId) {
       const b = await Board.findById(updates.boardId);
       if (!b) return res.status(400).json({ error: "게시판을 찾을 수 없습니다." });
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "relatedProductId") && updates.relatedProductId) {
+      const product = await Product.findById(updates.relatedProductId).select("_id").lean();
+      if (!product) return res.status(400).json({ error: "관련 제품을 찾을 수 없습니다." });
     }
     const doc = await BoardPost.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (!doc) return res.status(404).json({ error: "Not found" });

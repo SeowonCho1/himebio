@@ -143,7 +143,7 @@ async function run() {
     isActive: true,
   });
 
-  await Product.insertMany([
+  const productSeed = [
     {
       name: "Recombinant Protein A",
       category: PartnerType.MANUFACTURER,
@@ -279,7 +279,15 @@ async function run() {
       isNew: false,
       isActive: true,
     },
-  ]);
+  ];
+
+  await Product.insertMany(
+    productSeed.map((row, i) => ({
+      ...row,
+      sourceSite: "seed",
+      sourceProductId: `seed-${i + 1}`,
+    }))
+  );
 
   await Banner.insertMany([
     {
